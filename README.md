@@ -20,6 +20,8 @@ bun add @haruhimemoe/harumin-config zod
 | `HARUMIN_COLLECTIONS` | The MongoDB collection names both apps use. |
 | `SERVICE_ROUTES`, `manageableGuildsSchema`, `guildChannelsSchema`, `revalidateBodySchema` | The bot's bearer-authenticated routes the dashboard calls, and their bodies. |
 | `guildIconUrl(guild, size?)` | A guild's icon on Discord's CDN, or null. |
+| `CARD_ROUTES`, `profileCardSchema`, `scoreCardSchema`, `scoreListCardSchema` | The site's bearer-authenticated image routes and what the bot posts to them: a profile, one score, or a page of up to `MAX_CARD_ROWS` scores. Image URLs must be on `assets.ppy.sh`. |
+| `cardPlayerSchema`, `cardScoreSchema`, `GRADES` | The player and score shapes those cards share, and osu!'s grades. |
 
 ## License
 

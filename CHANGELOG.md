@@ -6,11 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-07
+
+### Added
+
+- Card images: `CARD_ROUTES` (the site's image routes), `profileCardSchema`, `scoreCardSchema`, `scoreListCardSchema`, the shared `cardPlayerSchema` and `cardScoreSchema`, `GRADES` and `MAX_CARD_ROWS`. Image URLs are limited to `assets.ppy.sh`.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
 
 - Guild settings (`guildSettingsSchema`, `defaultGuildSettings`, `readGuildSettings`, `guildSettingsPatchSchema`, `applyGuildSettingsPatch`), auto-embed keys, defaults and labels, `/track` entries, collection names, the bot's service routes and their bodies, and `guildIconUrl`.
 
-[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/haruhimemoe/harumin-config/releases/tag/v0.1.0

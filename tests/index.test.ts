@@ -1,10 +1,11 @@
 /**
  * @file tests/index.test.ts
  * @desc Guild settings defaults, reading stored documents (bad ones fall back), patches (strict,
- *       partial, never mutating), track entries, the service contract and guild icon URLs.
+ *       partial, never mutating), track entries, the service contract, guild icon URLs and the
+ *       card image contract.
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
- * @modified Tue Oct 6, 2026
+ * @modified Wed Oct 7, 2026
  */
 
 import { describe, expect, it } from "vitest";
@@ -17,9 +18,13 @@ import {
   defaultGuildSettings,
   guildIconUrl,
   guildSettingsPatchSchema,
+  MAX_CARD_ROWS,
   manageableGuildsSchema,
+  profileCardSchema,
   readGuildSettings,
   revalidateBodySchema,
+  scoreCardSchema,
+  scoreListCardSchema,
   trackEntrySchema,
 } from "../src/index.js";
 
@@ -126,12 +131,18 @@ describe("tracks and the service contract", () => {
       [
         "AUTO_EMBED_KEYS",
         "AUTO_EMBED_LABELS",
+        "CARD_ROUTES",
         "DEFAULT_AUTO_EMBEDS",
+        "GRADES",
         "HARUMIN_COLLECTIONS",
+        "MAX_CARD_ROWS",
         "MAX_TRACKED_PER_GUILD",
         "RULESETS",
         "SERVICE_ROUTES",
         "applyGuildSettingsPatch",
+        "cardMapSchema",
+        "cardPlayerSchema",
+        "cardScoreSchema",
         "defaultGuildSettings",
         "guildChannelsSchema",
         "guildIconUrl",
@@ -139,12 +150,122 @@ describe("tracks and the service contract", () => {
         "guildSettingsSchema",
         "manageableGuildSchema",
         "manageableGuildsSchema",
+        "profileCardSchema",
         "readGuildSettings",
         "revalidateBodySchema",
         "rulesetSchema",
+        "scoreCardSchema",
+        "scoreListCardSchema",
         "snowflakeSchema",
         "trackEntrySchema",
       ]
     `);
+  });
+});
+
+const PLAYER = {
+  osuId: 2,
+  username: "peppy",
+  countryCode: "AU",
+  coverUrl: "https://assets.ppy.sh/user-profile-covers/2/abc.jpeg",
+  supporter: true,
+  pp: 1234.5,
+  globalRank: 5678,
+  countryRank: 90,
+};
+
+const SCORE = {
+  map: {
+    beatmapId: 75,
+    beatmapsetId: 1,
+    artist: "Kenji Ninuma",
+    title: "DISCO PRINCE",
+    version: "Normal",
+    stars: 2.55,
+  },
+  grade: "S",
+  mods: ["HD", "DT"],
+  pp: 120.4,
+  ppApprox: false,
+  fcPp: null,
+  fcAccuracy: null,
+  accuracy: 98.5,
+  totalScore: 1_000_000,
+  combo: 314,
+  mapMaxCombo: 314,
+  hits: [
+    { label: "300", count: 200 },
+    { label: "miss", count: 0 },
+  ],
+  passed: true,
+  completion: null,
+  endedAt: "2026-10-07T12:00:00Z",
+};
+
+describe("card images", () => {
+  it("accepts a profile card", () => {
+    const card = {
+      ruleset: "osu",
+      player: PLAYER,
+      accuracy: 98.12,
+      level: 100.5,
+      playCount: 10,
+      playTime: 3600,
+      maxCombo: 1000,
+      rankedScore: 1,
+      grades: { ssh: 1, ss: 2, sh: 3, s: 4, a: 5 },
+      joinDate: "2007-08-28T03:09:12+00:00",
+    };
+    expect(profileCardSchema.parse(card)).toEqual(card);
+  });
+
+  it("only lets the renderer fetch assets.ppy.sh", () => {
+    const card = { ruleset: "osu", player: { ...PLAYER, coverUrl: "http://169.254.169.254/" } };
+    expect(profileCardSchema.safeParse(card).success).toBe(false);
+    expect(
+      scoreCardSchema.safeParse({
+        ruleset: "osu",
+        player: { ...PLAYER, coverUrl: "https://assets.ppy.sh.evil.example/x.png" },
+        heading: "Most recent play",
+        score: SCORE,
+        tries: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a score card and rejects a made-up grade or mod", () => {
+    const card = {
+      ruleset: "osu",
+      player: PLAYER,
+      heading: "Most recent play",
+      score: SCORE,
+      tries: 3,
+    };
+    expect(scoreCardSchema.parse(card)).toEqual(card);
+    expect(scoreCardSchema.safeParse({ ...card, score: { ...SCORE, grade: "Z" } }).success).toBe(
+      false,
+    );
+    expect(scoreCardSchema.safeParse({ ...card, score: { ...SCORE, mods: ["<b>"] } }).success).toBe(
+      false,
+    );
+  });
+
+  it("caps a list card at MAX_CARD_ROWS rows", () => {
+    const rows = Array.from({ length: MAX_CARD_ROWS + 1 }, (_, i) => ({
+      place: i + 1,
+      score: SCORE,
+    }));
+    const card = {
+      ruleset: "osu",
+      player: PLAYER,
+      title: "Top plays",
+      note: null,
+      page: 1,
+      pages: 2,
+    };
+    expect(
+      scoreListCardSchema.safeParse({ ...card, rows: rows.slice(0, MAX_CARD_ROWS) }).success,
+    ).toBe(true);
+    expect(scoreListCardSchema.safeParse({ ...card, rows }).success).toBe(false);
   });
 });

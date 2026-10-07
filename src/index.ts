@@ -3,11 +3,12 @@
  * @desc @haruhimemoe/harumin-config: what the harumin bot and harumin.haruhime.moe agree on. A
  *       guild's settings (which links the bot answers with a card, the default ruleset), the
  *       /track entries, the collection names both read, and the bot's service routes the site
- *       calls (which guilds a Discord user can manage, and dropping a guild's cached settings).
- *       zod only, no I/O.
+ *       calls (which guilds a Discord user can manage, and dropping a guild's cached settings),
+ *       and the cards the bot asks the site to draw as images (/osu, /recent, /top). zod only, no
+ *       I/O.
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
- * @modified Tue Oct 6, 2026
+ * @modified Wed Oct 7, 2026
  */
 
 import { z } from "zod";
@@ -230,3 +231,146 @@ export const guildIconUrl = (
   const ext = guild.icon.startsWith("a_") ? "gif" : "png";
   return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${ext}?size=${size}`;
 };
+
+/** The site's card image routes, under SITE_URL, bearer HARUMIN_SERVICE_TOKEN. POST a card, get a PNG. */
+export const CARD_ROUTES = Object.freeze({
+  /** POST ProfileCard → image/png. /osu. */
+  profile: "/api/cards/profile",
+  /** POST ScoreCard → image/png. /recent. */
+  score: "/api/cards/score",
+  /** POST ScoreListCard → image/png. /top. */
+  scores: "/api/cards/scores",
+} as const);
+
+/** osu!'s score grades. */
+export const GRADES = ["XH", "X", "SH", "S", "A", "B", "C", "D", "F"] as const;
+/** One of GRADES. */
+export type Grade = (typeof GRADES)[number];
+
+const osuIdSchema = z.number().int().positive();
+const countSchema = z.number().int().nonnegative();
+const nonNegative = z.number().nonnegative();
+const countryCodeSchema = z
+  .string()
+  .regex(/^[A-Z]{2}$/)
+  .nullable();
+/** Only osu!'s asset host: the renderer fetches it, so nothing else may be named. */
+const osuAssetUrlSchema = z
+  .url()
+  .refine((url) => url.startsWith("https://assets.ppy.sh/"), "Not an assets.ppy.sh URL.");
+const modsSchema = z.array(z.string().regex(/^[A-Z0-9]{2,3}$/)).max(16);
+
+/** The player a card is about. The avatar is drawn from a.ppy.sh/{osuId}. */
+export const cardPlayerSchema = z.object({
+  osuId: osuIdSchema,
+  username: z.string().min(1).max(32),
+  countryCode: countryCodeSchema,
+  /** The profile cover, or null for none. */
+  coverUrl: osuAssetUrlSchema.nullable(),
+  supporter: z.boolean(),
+  pp: nonNegative,
+  globalRank: z.number().int().positive().nullable(),
+  countryRank: z.number().int().positive().nullable(),
+});
+
+/** The player a card is about. */
+export type CardPlayer = z.infer<typeof cardPlayerSchema>;
+
+/** /osu's card: a player's numbers in one ruleset. */
+export const profileCardSchema = z.object({
+  ruleset: rulesetSchema,
+  player: cardPlayerSchema,
+  /** Percent, 0 to 100. */
+  accuracy: z.number().min(0).max(100),
+  level: nonNegative,
+  playCount: countSchema,
+  /** Seconds. */
+  playTime: countSchema,
+  maxCombo: countSchema,
+  rankedScore: countSchema,
+  grades: z.object({
+    ssh: countSchema,
+    ss: countSchema,
+    sh: countSchema,
+    s: countSchema,
+    a: countSchema,
+  }),
+  /** ISO date, or null when osu! sent none. */
+  joinDate: z.iso.datetime({ offset: true }).nullable(),
+});
+
+/** /osu's card. */
+export type ProfileCard = z.infer<typeof profileCardSchema>;
+
+/** The map a score was set on. The cover is drawn from the set id. */
+export const cardMapSchema = z.object({
+  beatmapId: osuIdSchema,
+  beatmapsetId: osuIdSchema.nullable(),
+  artist: z.string().max(256),
+  title: z.string().max(256),
+  version: z.string().max(256),
+  /** With the score's mods when rosu knew; otherwise osu!'s nomod rating. */
+  stars: nonNegative.nullable(),
+});
+
+/** One score as a card draws it. */
+export const cardScoreSchema = z.object({
+  map: cardMapSchema,
+  grade: z.enum(GRADES),
+  mods: modsSchema,
+  /** osu!'s pp, or rosu's when osu! gave none (then `ppApprox`), or null. */
+  pp: nonNegative.nullable(),
+  ppApprox: z.boolean(),
+  /** What a full combo would give, when the play wasn't one and rosu knew. */
+  fcPp: nonNegative.nullable(),
+  /** Percent, 0 to 100. */
+  fcAccuracy: z.number().min(0).max(100).nullable(),
+  /** Percent, 0 to 100. */
+  accuracy: z.number().min(0).max(100),
+  totalScore: countSchema,
+  combo: countSchema,
+  mapMaxCombo: countSchema.nullable(),
+  /** The ruleset's judgements in order, e.g. 300 / 100 / 50 / miss. */
+  hits: z.array(z.object({ label: z.string().max(8), count: countSchema })).max(8),
+  passed: z.boolean(),
+  /** Percent of the map played, for a fail. */
+  completion: z.number().min(0).max(100).nullable(),
+  endedAt: z.iso.datetime({ offset: true }),
+});
+
+/** One score as a card draws it. */
+export type CardScore = z.infer<typeof cardScoreSchema>;
+
+/** /recent's card: one score, big. */
+export const scoreCardSchema = z.object({
+  ruleset: rulesetSchema,
+  player: cardPlayerSchema,
+  /** The line above the map, e.g. "Most recent play". */
+  heading: z.string().max(64),
+  score: cardScoreSchema,
+  /** Which try in a row on this map and mods, when more than one. */
+  tries: z.number().int().min(2).nullable(),
+});
+
+/** /recent's card. */
+export type ScoreCard = z.infer<typeof scoreCardSchema>;
+
+/** The most rows a list card draws. */
+export const MAX_CARD_ROWS = 5;
+
+/** /top's card: one page of a list. */
+export const scoreListCardSchema = z.object({
+  ruleset: rulesetSchema,
+  player: cardPlayerSchema,
+  title: z.string().max(64),
+  /** Sort and filter, e.g. "Sorted by accuracy · HD only". */
+  note: z.string().max(128).nullable(),
+  page: z.number().int().positive(),
+  pages: z.number().int().positive(),
+  rows: z
+    .array(z.object({ place: z.number().int().positive(), score: cardScoreSchema }))
+    .max(MAX_CARD_ROWS),
+});
+
+/** /top's card. */
+export type ScoreListCard = z.infer<typeof scoreListCardSchema>;
