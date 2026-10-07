@@ -1,0 +1,232 @@
+/**
+ * @file src/index.ts
+ * @desc @haruhimemoe/harumin-config: what the harumin bot and harumin.haruhime.moe agree on. A
+ *       guild's settings (which links the bot answers with a card, the default ruleset), the
+ *       /track entries, the collection names both read, and the bot's service routes the site
+ *       calls (which guilds a Discord user can manage, and dropping a guild's cached settings).
+ *       zod only, no I/O.
+ * @author David @dvhsh (https://dvh.sh)
+ * @created Tue Oct 6, 2026
+ * @modified Tue Oct 6, 2026
+ */
+
+import { z } from "zod";
+
+/** A Discord id: 17 to 20 digits. */
+export const snowflakeSchema = z.string().regex(/^\d{17,20}$/, "Not a Discord id.");
+
+/** osu!'s four rulesets, as the osu! API names them. */
+export const RULESETS = ["osu", "taiko", "fruits", "mania"] as const;
+/** One of RULESETS. */
+export type Ruleset = (typeof RULESETS)[number];
+/** Accepts exactly the RULESETS names. */
+export const rulesetSchema = z.enum(RULESETS);
+
+/** The link types the bot can answer with a card, in the order the dashboard lists them. */
+export const AUTO_EMBED_KEYS = ["map", "match", "pack", "pool", "bb"] as const;
+/** One of AUTO_EMBED_KEYS. */
+export type AutoEmbedKey = (typeof AUTO_EMBED_KEYS)[number];
+
+/** Each link type on or off. */
+export type AutoEmbeds = Record<AutoEmbedKey, boolean>;
+
+/** A new guild's cards: beatmaps, packs and pools on; match and bb links off. */
+export const DEFAULT_AUTO_EMBEDS: Readonly<AutoEmbeds> = Object.freeze({
+  map: true,
+  match: false,
+  pack: true,
+  pool: true,
+  bb: false,
+});
+
+/** What each auto-embed does, for the dashboard and /help. */
+export const AUTO_EMBED_LABELS: Readonly<Record<AutoEmbedKey, { name: string; line: string }>> =
+  Object.freeze({
+    map: { name: "Beatmaps", line: "osu.ppy.sh beatmap links get a map card." },
+    match: { name: "Matches", line: "Multiplayer match links get a summary with match costs." },
+    pack: { name: "Packs", line: "packs.haruhime.moe links get a pack card." },
+    pool: { name: "Pools", line: "pools.haruhime.moe links get a pool card." },
+    bb: { name: "BBCode", line: "bb.haruhime.moe links get a small preview." },
+  });
+
+const autoEmbedsSchema = z.object({
+  map: z.boolean().default(DEFAULT_AUTO_EMBEDS.map),
+  match: z.boolean().default(DEFAULT_AUTO_EMBEDS.match),
+  pack: z.boolean().default(DEFAULT_AUTO_EMBEDS.pack),
+  pool: z.boolean().default(DEFAULT_AUTO_EMBEDS.pool),
+  bb: z.boolean().default(DEFAULT_AUTO_EMBEDS.bb),
+});
+
+/**
+ * One guild's settings as stored. Missing fields take the defaults, so a guild nobody configured
+ * reads as defaultGuildSettings(guildId). Unknown keys are stripped.
+ */
+export const guildSettingsSchema = z.object({
+  guildId: snowflakeSchema,
+  autoEmbeds: autoEmbedsSchema.default({ ...DEFAULT_AUTO_EMBEDS }),
+  /** The ruleset commands use when nobody picks one and the player has no main mode. */
+  defaultMode: rulesetSchema.nullable().default(null),
+  updatedAt: z.coerce.date().optional(),
+  /** Discord id of whoever saved last. */
+  updatedBy: snowflakeSchema.optional(),
+});
+
+/** One guild's settings. */
+export type GuildSettings = z.infer<typeof guildSettingsSchema>;
+
+/** What the dashboard may change: any subset of the cards, and the default ruleset. */
+export const guildSettingsPatchSchema = z
+  .object({
+    autoEmbeds: z
+      .object({
+        map: z.boolean(),
+        match: z.boolean(),
+        pack: z.boolean(),
+        pool: z.boolean(),
+        bb: z.boolean(),
+      })
+      .partial()
+      .strict()
+      .optional(),
+    defaultMode: rulesetSchema.nullable().optional(),
+  })
+  .strict();
+
+/** A change from the dashboard. */
+export type GuildSettingsPatch = z.infer<typeof guildSettingsPatchSchema>;
+
+/**
+ * @function defaultGuildSettings
+ * @param guildId {string} the guild's Discord id
+ * @returns {GuildSettings} the settings a guild has before anyone changes them
+ * @throws {z.ZodError} when guildId isn't a Discord id
+ */
+export const defaultGuildSettings = (guildId: string): GuildSettings =>
+  guildSettingsSchema.parse({ guildId });
+
+/**
+ * @function readGuildSettings
+ * @param guildId {string} the guild asked about
+ * @param stored {unknown} the stored document, or null when there is none
+ * @returns {GuildSettings} the stored settings with defaults filled in; the defaults when nothing
+ *          is stored or the document doesn't parse (a bad document never breaks the bot)
+ */
+export const readGuildSettings = (guildId: string, stored: unknown): GuildSettings => {
+  if (stored === null || stored === undefined) return defaultGuildSettings(guildId);
+  const parsed = guildSettingsSchema.safeParse(stored);
+  return parsed.success && parsed.data.guildId === guildId
+    ? parsed.data
+    : defaultGuildSettings(guildId);
+};
+
+const mergeAutoEmbeds = (
+  current: AutoEmbeds,
+  change: Partial<Record<AutoEmbedKey, boolean | undefined>> | undefined,
+): AutoEmbeds => {
+  const next = { ...current };
+  for (const key of AUTO_EMBED_KEYS) {
+    const value = change?.[key];
+    if (value !== undefined) next[key] = value;
+  }
+  return next;
+};
+
+/**
+ * @function applyGuildSettingsPatch
+ * @param current {GuildSettings} the guild's settings now
+ * @param patch {GuildSettingsPatch} a parsed change
+ * @param by {string} Discord id of whoever saved
+ * @param now {Date} when (tests pass a fixed date)
+ * @returns {GuildSettings} new settings; `current` is not changed
+ */
+export const applyGuildSettingsPatch = (
+  current: GuildSettings,
+  patch: GuildSettingsPatch,
+  by: string,
+  now: Date = new Date(),
+): GuildSettings => ({
+  ...current,
+  autoEmbeds: mergeAutoEmbeds(current.autoEmbeds, patch.autoEmbeds),
+  defaultMode: patch.defaultMode === undefined ? current.defaultMode : patch.defaultMode,
+  updatedAt: now,
+  updatedBy: by,
+});
+
+/** The most osu! players one guild can track. */
+export const MAX_TRACKED_PER_GUILD = 25;
+
+/** One /track entry: post this player's new top plays in this channel. */
+export const trackEntrySchema = z.object({
+  guildId: snowflakeSchema,
+  channelId: snowflakeSchema,
+  osuId: z.number().int().positive(),
+  /** The name when it was added, for lists; osu! ids never change, names do. */
+  username: z.string().min(1).max(32),
+  mode: rulesetSchema,
+  addedBy: snowflakeSchema,
+  addedAt: z.coerce.date(),
+});
+
+/** One /track entry. */
+export type TrackEntry = z.infer<typeof trackEntrySchema>;
+
+/** The MongoDB collections in harumin's database. */
+export const HARUMIN_COLLECTIONS = Object.freeze({
+  guildSettings: "guild_settings",
+  tracks: "tracks",
+  trackState: "track_state",
+  members: "guild_members",
+} as const);
+
+/** The bot's service routes, under its SERVICE_URL, bearer HARUMIN_SERVICE_TOKEN. */
+export const SERVICE_ROUTES = Object.freeze({
+  /** GET ?discordId= → ManageableGuilds. */
+  manageableGuilds: "/guilds/manageable",
+  /** GET /guilds/{id}/channels → GuildChannels (text channels the bot can post in). */
+  guildChannels: "/guilds/:guildId/channels",
+  /** POST { guildId } → 204. The bot drops its cached settings for that guild. */
+  revalidate: "/settings/revalidate",
+} as const);
+
+/** One guild in the dashboard's picker. */
+export const manageableGuildSchema = z.object({
+  id: snowflakeSchema,
+  name: z.string(),
+  /** Discord's icon hash, or null. */
+  icon: z.string().nullable(),
+});
+
+/** One guild in the dashboard's picker. */
+export type ManageableGuild = z.infer<typeof manageableGuildSchema>;
+
+/** The bot's answer to SERVICE_ROUTES.manageableGuilds. */
+export const manageableGuildsSchema = z.object({ guilds: z.array(manageableGuildSchema) });
+
+/** The guilds where a Discord user has Manage Server and the bot is a member. */
+export type ManageableGuilds = z.infer<typeof manageableGuildsSchema>;
+
+/** The bot's answer to SERVICE_ROUTES.guildChannels. */
+export const guildChannelsSchema = z.object({
+  channels: z.array(z.object({ id: snowflakeSchema, name: z.string() })),
+});
+
+/** Text channels in a guild, for showing /track entries by name. */
+export type GuildChannels = z.infer<typeof guildChannelsSchema>;
+
+/** The body of SERVICE_ROUTES.revalidate. */
+export const revalidateBodySchema = z.object({ guildId: snowflakeSchema }).strict();
+
+/**
+ * @function guildIconUrl
+ * @param guild {Pick<ManageableGuild, "id" | "icon">} a guild with its icon hash
+ * @param size {number} pixels, a power of two from 16 to 4096
+ * @returns {string | null} Discord's CDN URL, or null when the guild has no icon
+ */
+export const guildIconUrl = (
+  guild: Pick<ManageableGuild, "id" | "icon">,
+  size = 128,
+): string | null => {
+  if (!guild.icon) return null;
+  const ext = guild.icon.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${ext}?size=${size}`;
+};
