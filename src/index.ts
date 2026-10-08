@@ -297,10 +297,25 @@ export const profileCardSchema = z.object({
   }),
   /** ISO date, or null when osu! sent none. */
   joinDate: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * "image" draws the cover. "hole" leaves CARD_LAYOUT.profile.cover transparent (and the paper
+   * around the frame too), so the bot can lay an animated cover under the PNG with ffmpeg.
+   */
+  cover: z.enum(["image", "hole"]).default("image"),
 });
 
 /** /osu's card. */
 export type ProfileCard = z.infer<typeof profileCardSchema>;
+
+/** Where things sit on the card images, in pixels, so the bot and the site agree. */
+export const CARD_LAYOUT = Object.freeze({
+  profile: Object.freeze({
+    width: 1000,
+    height: 490,
+    /** The cover's box: what `cover: "hole"` leaves transparent. */
+    cover: Object.freeze({ x: 13, y: 13, width: 974, height: 170 }),
+  }),
+} as const);
 
 /** The map a score was set on. The cover is drawn from the set id. */
 export const cardMapSchema = z.object({

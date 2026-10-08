@@ -14,6 +14,7 @@ import {
   AUTO_EMBED_KEYS,
   AUTO_EMBED_LABELS,
   applyGuildSettingsPatch,
+  CARD_LAYOUT,
   DEFAULT_AUTO_EMBEDS,
   defaultGuildSettings,
   guildIconUrl,
@@ -131,6 +132,7 @@ describe("tracks and the service contract", () => {
       [
         "AUTO_EMBED_KEYS",
         "AUTO_EMBED_LABELS",
+        "CARD_LAYOUT",
         "CARD_ROUTES",
         "DEFAULT_AUTO_EMBEDS",
         "GRADES",
@@ -216,7 +218,15 @@ describe("card images", () => {
       grades: { ssh: 1, ss: 2, sh: 3, s: 4, a: 5 },
       joinDate: "2007-08-28T03:09:12+00:00",
     };
-    expect(profileCardSchema.parse(card)).toEqual(card);
+    expect(profileCardSchema.parse(card)).toEqual({ ...card, cover: "image" });
+    expect(profileCardSchema.parse({ ...card, cover: "hole" }).cover).toBe("hole");
+    expect(profileCardSchema.safeParse({ ...card, cover: "gif" }).success).toBe(false);
+  });
+
+  it("puts the profile cover inside the card", () => {
+    const { width, height, cover } = CARD_LAYOUT.profile;
+    expect(cover.x + cover.width).toBeLessThanOrEqual(width);
+    expect(cover.y + cover.height).toBeLessThanOrEqual(height);
   });
 
   it("only lets the renderer fetch assets.ppy.sh", () => {

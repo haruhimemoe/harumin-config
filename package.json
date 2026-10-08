@@ -1,6 +1,6 @@
 {
   "name": "@haruhimemoe/harumin-config",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The settings contract between the harumin osu! Discord bot and harumin.haruhime.moe: guild settings, /track entries, collection names and the bot's service routes, as zod schemas.",
   "keywords": [
     "harumin",
