@@ -177,6 +177,8 @@ export const HARUMIN_COLLECTIONS = Object.freeze({
   tracks: "tracks",
   trackState: "track_state",
   members: "guild_members",
+  /** One doc per osu! account: card accent, cover and favorite map (userSettingsSchema). */
+  userSettings: "user_settings",
 } as const);
 
 /** The bot's service routes, under its SERVICE_URL, bearer HARUMIN_SERVICE_TOKEN. */
@@ -187,6 +189,8 @@ export const SERVICE_ROUTES = Object.freeze({
   guildChannels: "/guilds/:guildId/channels",
   /** POST { guildId } → 204. The bot drops its cached settings for that guild. */
   revalidate: "/settings/revalidate",
+  /** POST { osuId } → 204. The bot drops its cached card settings and profile for that player. */
+  revalidateUser: "/users/revalidate",
 } as const);
 
 /** One guild in the dashboard's picker. */
@@ -216,6 +220,9 @@ export type GuildChannels = z.infer<typeof guildChannelsSchema>;
 
 /** The body of SERVICE_ROUTES.revalidate. */
 export const revalidateBodySchema = z.object({ guildId: snowflakeSchema }).strict();
+
+/** The body of SERVICE_ROUTES.revalidateUser. */
+export const revalidateUserBodySchema = z.object({ osuId: z.number().int().positive() }).strict();
 
 /**
  * @function guildIconUrl
@@ -300,6 +307,63 @@ export const cardPlayerSchema = z.object({
 /** The player a card is about. */
 export type CardPlayer = z.infer<typeof cardPlayerSchema>;
 
+/** The card accents a player can pick, rose first (the default). */
+export const CARD_ACCENTS = [
+  "rose",
+  "sky",
+  "mint",
+  "violet",
+  "amber",
+  "coral",
+  "teal",
+  "ink",
+] as const;
+
+/** One card accent. */
+export type CardAccent = (typeof CARD_ACCENTS)[number];
+
+/** What sits behind the profile card's header: the osu! profile cover, or plain paper. */
+export const CARD_COVERS = ["profile", "paper"] as const;
+
+/** One player's card settings as stored, keyed by osu! id. Missing fields take the defaults. */
+export const userSettingsSchema = z.object({
+  osuId: osuIdSchema,
+  accent: z.enum(CARD_ACCENTS).default("rose"),
+  cover: z.enum(CARD_COVERS).default("profile"),
+  /** A difficulty whose best score shows as the favorite line on /osu. */
+  favoriteBeatmapId: osuIdSchema.nullable().default(null),
+  updatedAt: z.coerce.date().optional(),
+});
+
+/** One player's card settings. */
+export type UserSettings = z.infer<typeof userSettingsSchema>;
+
+/**
+ * @function readUserSettings
+ * @param osuId {number} the player
+ * @param stored {unknown} the stored doc, or null
+ * @returns {UserSettings} the doc, or the defaults when it's missing, broken or someone else's
+ */
+export const readUserSettings = (osuId: number, stored: unknown): UserSettings => {
+  const parsed = stored == null ? null : userSettingsSchema.safeParse(stored);
+  return parsed?.success && parsed.data.osuId === osuId
+    ? parsed.data
+    : userSettingsSchema.parse({ osuId });
+};
+
+/** The player's theme on the profile card. */
+export const cardThemeSchema = z.object({
+  accent: z.enum(CARD_ACCENTS),
+  /** The favorite line: the player's best score on their favorite map. */
+  favorite: z
+    .object({
+      title: z.string().max(200),
+      pp: z.number().nonnegative().nullable(),
+      mods: modsSchema,
+    })
+    .nullable(),
+});
+
 /** /osu's card: a player's numbers in one ruleset. */
 export const profileCardSchema = z.object({
   ruleset: rulesetSchema,
@@ -326,6 +390,7 @@ export const profileCardSchema = z.object({
    * around the frame too), so the bot can lay an animated cover under the PNG with ffmpeg.
    */
   cover: z.enum(["image", "hole"]).default("image"),
+  theme: cardThemeSchema.optional(),
 });
 
 /** /osu's card. */

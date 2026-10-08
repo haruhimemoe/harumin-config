@@ -15,12 +15,14 @@ import {
   AUTO_EMBED_LABELS,
   applyGuildSettingsPatch,
   bbCardSchema,
+  CARD_ACCENTS,
   CARD_LAYOUT,
   compareCardSchema,
   DEFAULT_AUTO_EMBEDS,
   defaultGuildSettings,
   guildIconUrl,
   guildSettingsPatchSchema,
+  HARUMIN_COLLECTIONS,
   infoCardSchema,
   inviteCardSchema,
   leaderboardCardSchema,
@@ -35,7 +37,10 @@ import {
   poolCardSchema,
   profileCardSchema,
   readGuildSettings,
+  readUserSettings,
   revalidateBodySchema,
+  revalidateUserBodySchema,
+  SERVICE_ROUTES,
   scoreCardSchema,
   scoreListCardSchema,
   serverCardSchema,
@@ -147,6 +152,8 @@ describe("tracks and the service contract", () => {
       [
         "AUTO_EMBED_KEYS",
         "AUTO_EMBED_LABELS",
+        "CARD_ACCENTS",
+        "CARD_COVERS",
         "CARD_LAYOUT",
         "CARD_ROUTES",
         "DEFAULT_AUTO_EMBEDS",
@@ -166,6 +173,7 @@ describe("tracks and the service contract", () => {
         "cardMapSchema",
         "cardPlayerSchema",
         "cardScoreSchema",
+        "cardThemeSchema",
         "compareCardSchema",
         "compareSideSchema",
         "defaultGuildSettings",
@@ -184,7 +192,9 @@ describe("tracks and the service contract", () => {
         "poolCardSchema",
         "profileCardSchema",
         "readGuildSettings",
+        "readUserSettings",
         "revalidateBodySchema",
+        "revalidateUserBodySchema",
         "rulesetSchema",
         "scoreCardSchema",
         "scoreListCardSchema",
@@ -194,6 +204,7 @@ describe("tracks and the service contract", () => {
         "snowflakeSchema",
         "trackEntrySchema",
         "tracksCardSchema",
+        "userSettingsSchema",
       ]
     `);
   });
@@ -238,6 +249,26 @@ const SCORE = {
   endedAt: "2026-10-07T12:00:00Z",
 };
 
+describe("user settings", () => {
+  it("reads defaults for a missing or bad doc", () => {
+    const fallback = { osuId: 2, accent: "rose", cover: "profile", favoriteBeatmapId: null };
+    expect(readUserSettings(2, null)).toEqual(fallback);
+    expect(readUserSettings(2, { osuId: 2, accent: "lime" })).toEqual(fallback);
+    expect(readUserSettings(2, { osuId: 3, accent: "sky" })).toEqual(fallback);
+    expect(readUserSettings(2, { osuId: 2, accent: "sky", favoriteBeatmapId: 129891 })).toEqual({
+      ...fallback,
+      accent: "sky",
+      favoriteBeatmapId: 129891,
+    });
+    expect(CARD_ACCENTS).toHaveLength(8);
+    expect(CARD_ACCENTS[0]).toBe("rose");
+    expect(HARUMIN_COLLECTIONS.userSettings).toBe("user_settings");
+    expect(SERVICE_ROUTES.revalidateUser).toBe("/users/revalidate");
+    expect(revalidateUserBodySchema.safeParse({ osuId: 2 }).success).toBe(true);
+    expect(revalidateUserBodySchema.safeParse({ osuId: "2" }).success).toBe(false);
+  });
+});
+
 describe("card images", () => {
   it("accepts a profile card", () => {
     const card = {
@@ -255,6 +286,19 @@ describe("card images", () => {
     expect(profileCardSchema.parse(card)).toEqual({ ...card, cover: "image" });
     expect(profileCardSchema.parse({ ...card, cover: "hole" }).cover).toBe("hole");
     expect(profileCardSchema.safeParse({ ...card, cover: "gif" }).success).toBe(false);
+    expect(profileCardSchema.parse(card).theme).toBeUndefined();
+    const theme = {
+      accent: "sky",
+      favorite: { title: "xi - FREEDOM DiVE", pp: 727, mods: ["HD"] },
+    };
+    expect(profileCardSchema.parse({ ...card, theme }).theme).toEqual(theme);
+    expect(
+      profileCardSchema.parse({ ...card, theme: { accent: "mint", favorite: null } }).theme
+        ?.favorite,
+    ).toBeNull();
+    expect(
+      profileCardSchema.safeParse({ ...card, theme: { accent: "lime", favorite: null } }).success,
+    ).toBe(false);
   });
 
   it("puts the profile cover inside the card", () => {

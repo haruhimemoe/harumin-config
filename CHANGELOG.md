@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-08
+
+### Added
+
+- `CARD_ACCENTS` (8 fixed accents, rose first) and `CARD_COVERS`.
+- `userSettingsSchema` and `readUserSettings`: per-player card settings keyed by osu! id, stored in `HARUMIN_COLLECTIONS.userSettings` (`user_settings`).
+- `SERVICE_ROUTES.revalidateUser` and `revalidateUserBodySchema`.
+- `theme` on `profileCardSchema` (`cardThemeSchema`): accent and favorite line.
+
 ## [0.7.0] - 2026-10-08
 
 ### Added
