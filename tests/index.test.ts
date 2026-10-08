@@ -14,6 +14,7 @@ import {
   AUTO_EMBED_KEYS,
   AUTO_EMBED_LABELS,
   applyGuildSettingsPatch,
+  bbCardSchema,
   CARD_LAYOUT,
   compareCardSchema,
   DEFAULT_AUTO_EMBEDS,
@@ -23,15 +24,21 @@ import {
   leaderboardCardSchema,
   MAX_CARD_ROWS,
   MAX_LEADERBOARD_ROWS,
+  MAX_MATCH_ROWS,
+  MAX_POOL_SLOTS,
   manageableGuildsSchema,
   mapCardSchema,
+  matchCostCardSchema,
+  poolCardSchema,
   profileCardSchema,
   readGuildSettings,
   revalidateBodySchema,
   scoreCardSchema,
   scoreListCardSchema,
+  serverCardSchema,
   simulateCardSchema,
   trackEntrySchema,
+  tracksCardSchema,
 } from "../src/index.js";
 
 const GUILD = "123456789012345678";
@@ -144,10 +151,15 @@ describe("tracks and the service contract", () => {
         "HARUMIN_COLLECTIONS",
         "MAX_CARD_ROWS",
         "MAX_LEADERBOARD_ROWS",
+        "MAX_MATCH_ROWS",
+        "MAX_POOL_SLOTS",
+        "MAX_SERVER_ROWS",
         "MAX_TRACKED_PER_GUILD",
+        "POOL_CHECKS",
         "RULESETS",
         "SERVICE_ROUTES",
         "applyGuildSettingsPatch",
+        "bbCardSchema",
         "cardMapSchema",
         "cardPlayerSchema",
         "cardScoreSchema",
@@ -162,15 +174,19 @@ describe("tracks and the service contract", () => {
         "manageableGuildSchema",
         "manageableGuildsSchema",
         "mapCardSchema",
+        "matchCostCardSchema",
+        "poolCardSchema",
         "profileCardSchema",
         "readGuildSettings",
         "revalidateBodySchema",
         "rulesetSchema",
         "scoreCardSchema",
         "scoreListCardSchema",
+        "serverCardSchema",
         "simulateCardSchema",
         "snowflakeSchema",
         "trackEntrySchema",
+        "tracksCardSchema",
       ]
     `);
   });
@@ -357,5 +373,65 @@ describe("card images", () => {
     expect(compareCardSchema.safeParse({ ...compare, b: { ...side, accuracy: -1 } }).success).toBe(
       false,
     );
+  });
+
+  it("accepts match, pool, server, tracks and bb cards", () => {
+    const row = { place: 1, osuId: 2, username: "a", countryCode: "JP", team: "red", cost: 1.2 };
+    const match = {
+      name: "OWC: (JP) vs (US)",
+      formula: "bathbot",
+      note: null,
+      teams: { red: 5, blue: 3 },
+      games: 8,
+      rows: [row],
+      more: 0,
+    };
+    expect(matchCostCardSchema.parse(match)).toEqual(match);
+    expect(
+      matchCostCardSchema.safeParse({ ...match, rows: Array(MAX_MATCH_ROWS + 1).fill(row) })
+        .success,
+    ).toBe(false);
+
+    const slot = {
+      label: "NM1",
+      mod: "NM",
+      title: "a - b [c]",
+      beatmapId: 1,
+      stars: 5.2,
+      lengthSeconds: 120,
+      check: null,
+    };
+    const pool = {
+      source: "check",
+      name: "x",
+      subtitle: null,
+      mapCount: 1,
+      stars: { min: 5.2, max: 5.2 },
+      slots: [{ ...slot, check: "potential" }],
+      note: null,
+    };
+    expect(poolCardSchema.parse(pool)).toEqual(pool);
+    expect(
+      poolCardSchema.safeParse({ ...pool, slots: Array(MAX_POOL_SLOTS + 1).fill(slot) }).success,
+    ).toBe(false);
+
+    const server = {
+      guild: { id: GUILD, name: "osu!", icon: "a_0123456789abcdef0123456789abcdef" },
+      ruleset: "osu",
+      stat: "pp",
+      total: 1,
+      page: 1,
+      pages: 1,
+      rows: [{ place: 1, osuId: 2, username: "a", countryCode: null, value: "1pp" }],
+    };
+    expect(serverCardSchema.parse(server)).toEqual(server);
+    expect(
+      serverCardSchema.safeParse({ ...server, guild: { ...server.guild, icon: "../x" } }).success,
+    ).toBe(false);
+
+    const tracks = { max: 25, rows: [{ osuId: 2, username: "a", ruleset: "mania", channel: "x" }] };
+    expect(tracksCardSchema.parse(tracks)).toEqual(tracks);
+    expect(bbCardSchema.parse({ templateId: "abc_1", name: null }).templateId).toBe("abc_1");
+    expect(bbCardSchema.safeParse({ templateId: "../x", name: null }).success).toBe(false);
   });
 });

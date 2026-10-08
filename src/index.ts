@@ -248,6 +248,16 @@ export const CARD_ROUTES = Object.freeze({
   simulate: "/api/cards/simulate",
   /** POST CompareCard → image/png. /compare. */
   compare: "/api/cards/compare",
+  /** POST MatchCostCard → image/png. /matchcost and match links. */
+  matchcost: "/api/cards/matchcost",
+  /** POST PoolCard → image/png. /pack, /pool view, check and parse, pack and pool links. */
+  pool: "/api/cards/pool",
+  /** POST ServerCard → image/png. /server. */
+  server: "/api/cards/server",
+  /** POST TracksCard → image/png. /track list. */
+  tracks: "/api/cards/tracks",
+  /** POST BbCard → image/png. bb links. */
+  bb: "/api/cards/bb",
 } as const);
 
 /** osu!'s score grades. */
@@ -496,3 +506,139 @@ export const compareCardSchema = z.object({
 
 /** /compare's card. */
 export type CompareCard = z.infer<typeof compareCardSchema>;
+
+/** The most players on a /matchcost card. */
+export const MAX_MATCH_ROWS = 16;
+
+/** /matchcost's card: a multiplayer match's players ranked by match cost. */
+export const matchCostCardSchema = z.object({
+  name: z.string().min(1).max(128),
+  /** The formula's name, e.g. "bathbot". */
+  formula: z.string().min(1).max(32),
+  /** Extra words under the title, e.g. "2 warmups skipped". */
+  note: z.string().max(128).nullable(),
+  /** Maps won by each team, or null when it isn't team vs. */
+  teams: z.object({ red: countSchema, blue: countSchema }).nullable(),
+  games: countSchema,
+  rows: z
+    .array(
+      z.object({
+        place: z.number().int().positive(),
+        osuId: osuIdSchema.nullable(),
+        username: z.string().min(1).max(32),
+        countryCode: countryCodeSchema,
+        team: z.enum(["red", "blue"]).nullable(),
+        cost: nonNegative,
+      }),
+    )
+    .max(MAX_MATCH_ROWS),
+  /** Players left off the card. */
+  more: countSchema,
+});
+
+/** /matchcost's card. */
+export type MatchCostCard = z.infer<typeof matchCostCardSchema>;
+
+/** The most slots on a pool card. */
+export const MAX_POOL_SLOTS = 32;
+
+/** A map's verdict against osu!'s content usage rules, on /pool check's card. */
+export const POOL_CHECKS = ["ok", "potential", "disallowed", "unknown"] as const;
+
+/** A pack, a pool, a pool's content check or a pasted pool. */
+export const poolCardSchema = z.object({
+  /** Where it came from: sets the corner label, and "check" draws a verdict per slot. */
+  source: z.enum(["pack", "pool", "check", "parsed"]),
+  name: z.string().max(128),
+  /** Tournament, round, year and owner, or "Pack key". */
+  subtitle: z.string().max(160).nullable(),
+  mapCount: countSchema,
+  stars: z.object({ min: nonNegative, max: nonNegative }).nullable(),
+  slots: z
+    .array(
+      z.object({
+        /** "NM1", "TB". */
+        label: z.string().min(1).max(8),
+        /** The bucket, for its color: "NM", "HD", "FM"..., or null. */
+        mod: z.string().max(4).nullable(),
+        /** "Artist - Title [Diff]", or null when osu! didn't say. */
+        title: z.string().max(200).nullable(),
+        beatmapId: osuIdSchema,
+        stars: nonNegative.nullable(),
+        lengthSeconds: countSchema.nullable(),
+        check: z.enum(POOL_CHECKS).nullable(),
+      }),
+    )
+    .max(MAX_POOL_SLOTS),
+  /** A line along the bottom: the check's verdict, or skipped lines. */
+  note: z.string().max(200).nullable(),
+});
+
+/** A pack or pool card. */
+export type PoolCard = z.infer<typeof poolCardSchema>;
+
+/** The most players on a /server page. */
+export const MAX_SERVER_ROWS = 10;
+
+/** /server's card: one page of a server's linked players, ranked. */
+export const serverCardSchema = z.object({
+  /** The icon is drawn from Discord's CDN by id and hash. */
+  guild: z.object({
+    id: snowflakeSchema,
+    name: z.string().min(1).max(100),
+    icon: z
+      .string()
+      .regex(/^(a_)?[0-9a-f]{32}$/)
+      .nullable(),
+  }),
+  ruleset: rulesetSchema,
+  /** What it's ranked by, e.g. "pp". */
+  stat: z.string().min(1).max(16),
+  total: countSchema,
+  page: z.number().int().positive(),
+  pages: z.number().int().positive(),
+  rows: z
+    .array(
+      z.object({
+        place: z.number().int().positive(),
+        osuId: osuIdSchema,
+        username: z.string().min(1).max(32),
+        countryCode: countryCodeSchema,
+        /** The stat as text, e.g. "12,345pp". */
+        value: z.string().min(1).max(24),
+      }),
+    )
+    .max(MAX_SERVER_ROWS),
+});
+
+/** /server's card. */
+export type ServerCard = z.infer<typeof serverCardSchema>;
+
+/** /track list's card: who a server tracks, and where. */
+export const tracksCardSchema = z.object({
+  max: z.number().int().positive(),
+  rows: z
+    .array(
+      z.object({
+        osuId: osuIdSchema,
+        username: z.string().min(1).max(32),
+        ruleset: rulesetSchema,
+        /** The channel's name, without "#". */
+        channel: z.string().min(1).max(100),
+      }),
+    )
+    .max(MAX_TRACKED_PER_GUILD),
+});
+
+/** /track list's card. */
+export type TracksCard = z.infer<typeof tracksCardSchema>;
+
+/** A bb.haruhime.moe template link's card. */
+export const bbCardSchema = z.object({
+  templateId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  /** The template's name, when bb gave one. */
+  name: z.string().max(128).nullable(),
+});
+
+/** A bb link's card. */
+export type BbCard = z.infer<typeof bbCardSchema>;

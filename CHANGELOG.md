@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-08
+
+### Added
+
+- Card images for `/matchcost`, `/pack`, `/pool`, `/server`, `/track list` and bb links: `matchCostCardSchema` (with `MAX_MATCH_ROWS`), `poolCardSchema` (with `MAX_POOL_SLOTS` and `POOL_CHECKS`), `serverCardSchema` (with `MAX_SERVER_ROWS`), `tracksCardSchema` and `bbCardSchema`, and their `CARD_ROUTES`.
+
 ## [0.4.0] - 2026-10-07
 
 ### Added
