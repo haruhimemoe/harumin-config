@@ -188,6 +188,7 @@ describe("tracks and the service contract", () => {
         "rulesetSchema",
         "scoreCardSchema",
         "scoreListCardSchema",
+        "scoreSessionSchema",
         "serverCardSchema",
         "simulateCardSchema",
         "snowflakeSchema",
@@ -289,6 +290,25 @@ describe("card images", () => {
       false,
     );
     expect(scoreCardSchema.safeParse({ ...card, score: { ...SCORE, mods: ["<b>"] } }).success).toBe(
+      false,
+    );
+  });
+
+  it("takes an optional session on the score card", () => {
+    const card = {
+      ruleset: "osu",
+      player: PLAYER,
+      heading: "Most recent play",
+      score: SCORE,
+      tries: null,
+    };
+    expect(scoreCardSchema.parse(card).session).toBeUndefined();
+    const withSession = scoreCardSchema.parse({
+      ...card,
+      session: { today: 23, note: "best of 23" },
+    });
+    expect(withSession.session).toEqual({ today: 23, note: "best of 23" });
+    expect(scoreCardSchema.safeParse({ ...card, session: { today: 0, note: null } }).success).toBe(
       false,
     );
   });

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-08
+
+### Added
+
+- `session` on `scoreCardSchema` (`scoreSessionSchema`): attempts on the map in the last 24 h and a note.
+
 ## [0.6.0] - 2026-10-08
 
 ### Added

@@ -380,6 +380,13 @@ export const cardScoreSchema = z.object({
 /** One score as a card draws it. */
 export type CardScore = z.infer<typeof cardScoreSchema>;
 
+/** /recent's attempts on this map in the last 24 h, and the line about them. */
+export const scoreSessionSchema = z.object({
+  today: z.number().int().positive(),
+  /** "first pass after 22 fails", "best of 23" or "best was 97.12%, 3 tries ago". */
+  note: z.string().min(1).max(64).nullable(),
+});
+
 /** /recent's card: one score, big. */
 export const scoreCardSchema = z.object({
   ruleset: rulesetSchema,
@@ -389,6 +396,7 @@ export const scoreCardSchema = z.object({
   score: cardScoreSchema,
   /** Which try in a row on this map and mods, when more than one. */
   tries: z.number().int().min(2).nullable(),
+  session: scoreSessionSchema.optional(),
 });
 
 /** /recent's card. */
