@@ -258,6 +258,12 @@ export const CARD_ROUTES = Object.freeze({
   tracks: "/api/cards/tracks",
   /** POST BbCard → image/png. bb links. */
   bb: "/api/cards/bb",
+  /** POST InfoCard → image/png. /info. */
+  info: "/api/cards/info",
+  /** POST LinkCard → image/png. /link. */
+  link: "/api/cards/link",
+  /** POST InviteCard → image/png. /invite. */
+  invite: "/api/cards/invite",
 } as const);
 
 /** osu!'s score grades. */
@@ -642,3 +648,35 @@ export const bbCardSchema = z.object({
 
 /** A bb link's card. */
 export type BbCard = z.infer<typeof bbCardSchema>;
+
+/** /info's card: harumin's version and live numbers. */
+export const infoCardSchema = z.object({
+  version: z.string().min(1).max(32),
+  guilds: countSchema,
+  uptimeSeconds: countSchema,
+  pingMs: countSchema,
+});
+
+/** /info's card. */
+export type InfoCard = z.infer<typeof infoCardSchema>;
+
+/** /link's card: the caller's linked osu! account, or null when there's none. */
+export const linkCardSchema = z.object({
+  account: z
+    .object({
+      osuId: osuIdSchema,
+      username: z.string().min(1).max(32),
+    })
+    .nullable(),
+});
+
+/** /link's card. */
+export type LinkCard = z.infer<typeof linkCardSchema>;
+
+/** /invite's card. */
+export const inviteCardSchema = z.object({
+  guilds: countSchema,
+});
+
+/** /invite's card. */
+export type InviteCard = z.infer<typeof inviteCardSchema>;

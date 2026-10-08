@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-08
+
+### Added
+
+- Card images for `/info`, `/link` and `/invite`: `infoCardSchema`, `linkCardSchema` and `inviteCardSchema`, and their `CARD_ROUTES`.
+
 ## [0.5.0] - 2026-10-08
 
 ### Added

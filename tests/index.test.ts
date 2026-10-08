@@ -21,7 +21,10 @@ import {
   defaultGuildSettings,
   guildIconUrl,
   guildSettingsPatchSchema,
+  infoCardSchema,
+  inviteCardSchema,
   leaderboardCardSchema,
+  linkCardSchema,
   MAX_CARD_ROWS,
   MAX_LEADERBOARD_ROWS,
   MAX_MATCH_ROWS,
@@ -170,7 +173,10 @@ describe("tracks and the service contract", () => {
         "guildIconUrl",
         "guildSettingsPatchSchema",
         "guildSettingsSchema",
+        "infoCardSchema",
+        "inviteCardSchema",
         "leaderboardCardSchema",
+        "linkCardSchema",
         "manageableGuildSchema",
         "manageableGuildsSchema",
         "mapCardSchema",
@@ -433,5 +439,16 @@ describe("card images", () => {
     expect(tracksCardSchema.parse(tracks)).toEqual(tracks);
     expect(bbCardSchema.parse({ templateId: "abc_1", name: null }).templateId).toBe("abc_1");
     expect(bbCardSchema.safeParse({ templateId: "../x", name: null }).success).toBe(false);
+  });
+
+  it("accepts info, link and invite cards", () => {
+    const info = { version: "1.0.0", guilds: 12, uptimeSeconds: 3600, pingMs: 40 };
+    expect(infoCardSchema.parse(info)).toEqual(info);
+    expect(infoCardSchema.safeParse({ ...info, pingMs: -1 }).success).toBe(false);
+    expect(linkCardSchema.parse({ account: null })).toEqual({ account: null });
+    expect(linkCardSchema.parse({ account: { osuId: 2, username: "peppy" } }).account?.osuId).toBe(
+      2,
+    );
+    expect(inviteCardSchema.parse({ guilds: 3 })).toEqual({ guilds: 3 });
   });
 });
