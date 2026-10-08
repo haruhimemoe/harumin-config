@@ -15,17 +15,22 @@ import {
   AUTO_EMBED_LABELS,
   applyGuildSettingsPatch,
   CARD_LAYOUT,
+  compareCardSchema,
   DEFAULT_AUTO_EMBEDS,
   defaultGuildSettings,
   guildIconUrl,
   guildSettingsPatchSchema,
+  leaderboardCardSchema,
   MAX_CARD_ROWS,
+  MAX_LEADERBOARD_ROWS,
   manageableGuildsSchema,
+  mapCardSchema,
   profileCardSchema,
   readGuildSettings,
   revalidateBodySchema,
   scoreCardSchema,
   scoreListCardSchema,
+  simulateCardSchema,
   trackEntrySchema,
 } from "../src/index.js";
 
@@ -138,6 +143,7 @@ describe("tracks and the service contract", () => {
         "GRADES",
         "HARUMIN_COLLECTIONS",
         "MAX_CARD_ROWS",
+        "MAX_LEADERBOARD_ROWS",
         "MAX_TRACKED_PER_GUILD",
         "RULESETS",
         "SERVICE_ROUTES",
@@ -145,19 +151,24 @@ describe("tracks and the service contract", () => {
         "cardMapSchema",
         "cardPlayerSchema",
         "cardScoreSchema",
+        "compareCardSchema",
+        "compareSideSchema",
         "defaultGuildSettings",
         "guildChannelsSchema",
         "guildIconUrl",
         "guildSettingsPatchSchema",
         "guildSettingsSchema",
+        "leaderboardCardSchema",
         "manageableGuildSchema",
         "manageableGuildsSchema",
+        "mapCardSchema",
         "profileCardSchema",
         "readGuildSettings",
         "revalidateBodySchema",
         "rulesetSchema",
         "scoreCardSchema",
         "scoreListCardSchema",
+        "simulateCardSchema",
         "snowflakeSchema",
         "trackEntrySchema",
       ]
@@ -277,5 +288,74 @@ describe("card images", () => {
       scoreListCardSchema.safeParse({ ...card, rows: rows.slice(0, MAX_CARD_ROWS) }).success,
     ).toBe(true);
     expect(scoreListCardSchema.safeParse({ ...card, rows }).success).toBe(false);
+  });
+
+  it("accepts a map card, with null AR and OD for mania", () => {
+    const card = {
+      ruleset: "mania",
+      map: { ...SCORE.map, creator: "peppy", status: "ranked" },
+      mods: [],
+      cs: 4,
+      ar: null,
+      od: null,
+      hp: 8,
+      lengthSeconds: 90,
+      bpm: 180,
+      maxCombo: null,
+      pps: [{ accuracy: 95, pp: 100 }],
+    };
+    expect(mapCardSchema.parse(card)).toEqual(card);
+    expect(mapCardSchema.safeParse({ ...card, pps: [{ accuracy: 101, pp: 1 }] }).success).toBe(
+      false,
+    );
+  });
+
+  it("caps a leaderboard card at MAX_LEADERBOARD_ROWS rows", () => {
+    const rows = Array.from({ length: MAX_LEADERBOARD_ROWS + 1 }, (_, i) => ({
+      place: i + 1,
+      osuId: 2,
+      username: "peppy",
+      countryCode: "AU",
+      grade: "S",
+      mods: ["HD"],
+      pp: 100,
+      accuracy: 99,
+      combo: 300,
+      totalScore: 1,
+    }));
+    const card = { map: SCORE.map, filter: null, page: 1, pages: 10 };
+    expect(
+      leaderboardCardSchema.safeParse({ ...card, rows: rows.slice(0, MAX_LEADERBOARD_ROWS) })
+        .success,
+    ).toBe(true);
+    expect(leaderboardCardSchema.safeParse({ ...card, rows }).success).toBe(false);
+  });
+
+  it("accepts simulate and compare cards", () => {
+    const simulate = {
+      ruleset: "osu",
+      map: SCORE.map,
+      mods: ["HD"],
+      accuracy: 98,
+      combo: 300,
+      mapMaxCombo: 314,
+      misses: 1,
+      pp: 150,
+    };
+    expect(simulateCardSchema.parse(simulate)).toEqual(simulate);
+    const side = {
+      player: PLAYER,
+      accuracy: 98,
+      playCount: 1,
+      playTime: 60,
+      maxCombo: 100,
+      ssCount: 2,
+      topPp: null,
+    };
+    const compare = { ruleset: "osu", a: side, b: side };
+    expect(compareCardSchema.parse(compare)).toEqual(compare);
+    expect(compareCardSchema.safeParse({ ...compare, b: { ...side, accuracy: -1 } }).success).toBe(
+      false,
+    );
   });
 });

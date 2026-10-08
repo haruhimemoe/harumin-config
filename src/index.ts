@@ -236,10 +236,18 @@ export const guildIconUrl = (
 export const CARD_ROUTES = Object.freeze({
   /** POST ProfileCard → image/png. /osu. */
   profile: "/api/cards/profile",
-  /** POST ScoreCard → image/png. /recent. */
+  /** POST ScoreCard → image/png. /recent, /score, /track posts. */
   score: "/api/cards/score",
-  /** POST ScoreListCard → image/png. /top. */
+  /** POST ScoreListCard → image/png. /top, /nochoke, /score's other scores. */
   scores: "/api/cards/scores",
+  /** POST MapCard → image/png. /map and beatmap links. */
+  map: "/api/cards/map",
+  /** POST LeaderboardCard → image/png. /leaderboard. */
+  leaderboard: "/api/cards/leaderboard",
+  /** POST SimulateCard → image/png. /simulate. */
+  simulate: "/api/cards/simulate",
+  /** POST CompareCard → image/png. /compare. */
+  compare: "/api/cards/compare",
 } as const);
 
 /** osu!'s score grades. */
@@ -389,3 +397,102 @@ export const scoreListCardSchema = z.object({
 
 /** /top's card. */
 export type ScoreListCard = z.infer<typeof scoreListCardSchema>;
+
+const percentSchema = z.number().min(0).max(100);
+
+/** /map's card: a difficulty's numbers with some mods, and pp at a few accuracies. */
+export const mapCardSchema = z.object({
+  ruleset: rulesetSchema,
+  map: cardMapSchema.extend({
+    creator: z.string().max(32),
+    /** osu!'s status, e.g. "ranked", "loved", "graveyard". */
+    status: z.string().max(16).nullable(),
+  }),
+  mods: modsSchema,
+  cs: nonNegative,
+  /** Null for rulesets without it. */
+  ar: nonNegative.nullable(),
+  od: nonNegative.nullable(),
+  hp: nonNegative,
+  /** Seconds, with the mods' speed. */
+  lengthSeconds: nonNegative,
+  /** With the mods' speed. */
+  bpm: nonNegative,
+  maxCombo: countSchema.nullable(),
+  /** pp at each accuracy, e.g. 95 / 98 / 99 / 100; empty when the .osu file wasn't had. */
+  pps: z.array(z.object({ accuracy: percentSchema, pp: nonNegative })).max(6),
+});
+
+/** /map's card. */
+export type MapCard = z.infer<typeof mapCardSchema>;
+
+/** The most rows a leaderboard card draws. */
+export const MAX_LEADERBOARD_ROWS = 10;
+
+/** /leaderboard's card: one page of a map's global top 100. */
+export const leaderboardCardSchema = z.object({
+  map: cardMapSchema,
+  /** The mod filter, e.g. "HD only", or null for every score. */
+  filter: z.string().max(64).nullable(),
+  page: z.number().int().positive(),
+  pages: z.number().int().positive(),
+  rows: z
+    .array(
+      z.object({
+        place: z.number().int().positive(),
+        osuId: osuIdSchema.nullable(),
+        username: z.string().min(1).max(32),
+        countryCode: countryCodeSchema,
+        grade: z.enum(GRADES),
+        mods: modsSchema,
+        pp: nonNegative.nullable(),
+        accuracy: percentSchema,
+        combo: countSchema,
+        totalScore: countSchema,
+      }),
+    )
+    .max(MAX_LEADERBOARD_ROWS),
+});
+
+/** /leaderboard's card. */
+export type LeaderboardCard = z.infer<typeof leaderboardCardSchema>;
+
+/** /simulate's card: a made-up play on a map and what it's worth. */
+export const simulateCardSchema = z.object({
+  ruleset: rulesetSchema,
+  /** `stars` is with the play's mods. */
+  map: cardMapSchema,
+  mods: modsSchema,
+  accuracy: percentSchema,
+  combo: countSchema,
+  mapMaxCombo: countSchema,
+  misses: countSchema,
+  pp: nonNegative,
+});
+
+/** /simulate's card. */
+export type SimulateCard = z.infer<typeof simulateCardSchema>;
+
+/** One side of /compare. */
+export const compareSideSchema = z.object({
+  player: cardPlayerSchema,
+  accuracy: percentSchema,
+  playCount: countSchema,
+  /** Seconds. */
+  playTime: countSchema,
+  maxCombo: countSchema,
+  /** SS and silver SS together. */
+  ssCount: countSchema,
+  /** The best play's pp, or null with no top plays. */
+  topPp: nonNegative.nullable(),
+});
+
+/** /compare's card: two players in one ruleset. */
+export const compareCardSchema = z.object({
+  ruleset: rulesetSchema,
+  a: compareSideSchema,
+  b: compareSideSchema,
+});
+
+/** /compare's card. */
+export type CompareCard = z.infer<typeof compareCardSchema>;
