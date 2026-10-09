@@ -481,6 +481,8 @@ describe("card images", () => {
       note: null,
     };
     expect(poolCardSchema.parse(pool)).toEqual(pool);
+    for (const source of ["practice", "fromtop", "me"] as const)
+      expect(poolCardSchema.parse({ ...pool, source }).source).toBe(source);
     expect(
       poolCardSchema.safeParse({ ...pool, slots: Array(MAX_POOL_SLOTS + 1).fill(slot) }).success,
     ).toBe(false);

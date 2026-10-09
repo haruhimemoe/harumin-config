@@ -624,10 +624,11 @@ export const MAX_POOL_SLOTS = 32;
 /** A map's verdict against osu!'s content usage rules, on /pool check's card. */
 export const POOL_CHECKS = ["ok", "potential", "disallowed", "unknown"] as const;
 
-/** A pack, a pool, a pool's content check or a pasted pool. */
+/** A pack, a pool, a pool's content check, a pasted pool, a /practice pick, a draft from top
+ * plays, or a player's scores on a pool. */
 export const poolCardSchema = z.object({
   /** Where it came from: sets the corner label, and "check" draws a verdict per slot. */
-  source: z.enum(["pack", "pool", "check", "parsed"]),
+  source: z.enum(["pack", "pool", "check", "parsed", "practice", "fromtop", "me"]),
   name: z.string().max(128),
   /** Tournament, round, year and owner, or "Pack key". */
   subtitle: z.string().max(160).nullable(),
