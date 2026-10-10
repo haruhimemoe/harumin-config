@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-09
+
+### Added
+
+- A pool card slot takes `mine` (`{ grade, accuracy, pp }` or null): the player's best score on the map, for /pool me.
+
 ## [0.9.0] - 2026-10-08
 
 ### Added

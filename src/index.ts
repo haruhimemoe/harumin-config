@@ -647,6 +647,11 @@ export const poolCardSchema = z.object({
         stars: nonNegative.nullable(),
         lengthSeconds: countSchema.nullable(),
         check: z.enum(POOL_CHECKS).nullable(),
+        /** /pool me: the player's best score on the map, null when not played. */
+        mine: z
+          .object({ grade: z.enum(GRADES), accuracy: percentSchema, pp: nonNegative.nullable() })
+          .nullable()
+          .optional(),
       }),
     )
     .max(MAX_POOL_SLOTS),
