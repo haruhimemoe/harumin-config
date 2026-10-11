@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - CI runs CodeQL and a gitleaks scan of the full git history, and Dependabot covers dependencies and pinned actions. Dependencies are on their latest versions.
 
+## [0.11.1] - 2026-10-10
+
+### Fixed
+
+- `guildSettingsPatchSchema` takes the `replay` auto-embed. In 0.11.0 it refused any patch that set it.
+
 ## [0.11.0] - 2026-10-10
 
 ### Added

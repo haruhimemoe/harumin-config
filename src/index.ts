@@ -88,6 +88,7 @@ export const guildSettingsPatchSchema = z
         pack: z.boolean(),
         pool: z.boolean(),
         bb: z.boolean(),
+        replay: z.boolean(),
       })
       .partial()
       .strict()

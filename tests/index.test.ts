@@ -92,6 +92,9 @@ describe("guild settings", () => {
   it("applies a patch without touching the original", () => {
     const current = defaultGuildSettings(GUILD);
     const now = new Date("2026-10-06T00:00:00Z");
+    expect(guildSettingsPatchSchema.parse({ autoEmbeds: { replay: false } }).autoEmbeds).toEqual({
+      replay: false,
+    });
     const patch = guildSettingsPatchSchema.parse({ autoEmbeds: { bb: true } });
     const next = applyGuildSettingsPatch(current, patch, USER, now);
     expect(next.autoEmbeds).toEqual({ ...DEFAULT_AUTO_EMBEDS, bb: true });
