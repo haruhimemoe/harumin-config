@@ -275,6 +275,8 @@ export const CARD_ROUTES = Object.freeze({
   link: "/api/cards/link",
   /** POST InviteCard → image/png. /invite. */
   invite: "/api/cards/invite",
+  /** POST NoticeCard → image/png. Errors and confirmations. */
+  notice: "/api/cards/notice",
 } as const);
 
 /** osu!'s score grades. */
@@ -731,6 +733,34 @@ export const bbCardSchema = z.object({
 
 /** A bb link's card. */
 export type BbCard = z.infer<typeof bbCardSchema>;
+
+/** A notice's tone: what went wrong, what was done, or something to know. */
+export const NOTICE_TONES = ["error", "ok", "info"] as const;
+
+/** Most text a notice card holds, all parts together. */
+export const MAX_NOTICE_LENGTH = 600;
+
+/** One run of a notice's text: plain, bold (`**x**`) or code (`` `x` ``). */
+export const noticePartSchema = z.object({
+  text: z.string().min(1).max(MAX_NOTICE_LENGTH),
+  style: z.enum(["plain", "bold", "code"]),
+});
+
+/** An error or confirmation as an image: its tone and its text in styled runs. */
+export const noticeCardSchema = z.object({
+  tone: z.enum(NOTICE_TONES),
+  parts: z
+    .array(noticePartSchema)
+    .min(1)
+    .max(60)
+    .refine(
+      (parts) => parts.reduce((sum, part) => sum + part.text.length, 0) <= MAX_NOTICE_LENGTH,
+      `A notice holds at most ${MAX_NOTICE_LENGTH} characters.`,
+    ),
+});
+
+/** A notice card. */
+export type NoticeCard = z.infer<typeof noticeCardSchema>;
 
 /** /info's card: harumin's version and live numbers. */
 export const infoCardSchema = z.object({

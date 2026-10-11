@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - CI runs CodeQL and a gitleaks scan of the full git history, and Dependabot covers dependencies and pinned actions. Dependencies are on their latest versions.
 
+## [0.12.0] - 2026-10-10
+
+### Added
+
+- `noticeCardSchema` and `CARD_ROUTES.notice`: errors and confirmations as an image, in styled runs (plain, bold, code), at most 600 characters.
+
 ## [0.11.1] - 2026-10-10
 
 ### Fixed

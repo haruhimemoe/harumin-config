@@ -34,6 +34,7 @@ import {
   manageableGuildsSchema,
   mapCardSchema,
   matchCostCardSchema,
+  noticeCardSchema,
   poolCardSchema,
   profileCardSchema,
   readGuildSettings,
@@ -165,9 +166,11 @@ describe("tracks and the service contract", () => {
         "MAX_CARD_ROWS",
         "MAX_LEADERBOARD_ROWS",
         "MAX_MATCH_ROWS",
+        "MAX_NOTICE_LENGTH",
         "MAX_POOL_SLOTS",
         "MAX_SERVER_ROWS",
         "MAX_TRACKED_PER_GUILD",
+        "NOTICE_TONES",
         "POOL_CHECKS",
         "RULESETS",
         "SERVICE_ROUTES",
@@ -192,6 +195,8 @@ describe("tracks and the service contract", () => {
         "manageableGuildsSchema",
         "mapCardSchema",
         "matchCostCardSchema",
+        "noticeCardSchema",
+        "noticePartSchema",
         "poolCardSchema",
         "profileCardSchema",
         "readGuildSettings",
@@ -522,6 +527,28 @@ describe("card images", () => {
     expect(tracksCardSchema.parse(tracks)).toEqual(tracks);
     expect(bbCardSchema.parse({ templateId: "abc_1", name: null }).templateId).toBe("abc_1");
     expect(bbCardSchema.safeParse({ templateId: "../x", name: null }).success).toBe(false);
+  });
+
+  it("accepts notice cards up to 600 characters", () => {
+    const notice = {
+      tone: "error",
+      parts: [
+        { text: "Give a ", style: "plain" },
+        { text: "score", style: "code" },
+      ],
+    };
+    expect(noticeCardSchema.parse(notice)).toEqual(notice);
+    expect(noticeCardSchema.safeParse({ ...notice, tone: "loud" }).success).toBe(false);
+    expect(noticeCardSchema.safeParse({ tone: "ok", parts: [] }).success).toBe(false);
+    expect(
+      noticeCardSchema.safeParse({
+        tone: "ok",
+        parts: [
+          { text: "x".repeat(400), style: "plain" },
+          { text: "y".repeat(201), style: "bold" },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts info, link and invite cards", () => {
