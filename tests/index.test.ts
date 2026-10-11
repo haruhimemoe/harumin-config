@@ -56,7 +56,7 @@ describe("guild settings", () => {
   it("defaults a new guild", () => {
     expect(defaultGuildSettings(GUILD)).toEqual({
       guildId: GUILD,
-      autoEmbeds: { map: true, match: false, pack: true, pool: true, bb: false },
+      autoEmbeds: { map: true, match: false, pack: true, pool: true, bb: false, replay: true },
       defaultMode: null,
     });
     expect(() => defaultGuildSettings("nope")).toThrow();
@@ -76,7 +76,7 @@ describe("guild settings", () => {
     });
     expect(read).toEqual({
       guildId: GUILD,
-      autoEmbeds: { map: false, match: false, pack: true, pool: true, bb: false },
+      autoEmbeds: { map: false, match: false, pack: true, pool: true, bb: false, replay: true },
       defaultMode: "mania",
     });
   });

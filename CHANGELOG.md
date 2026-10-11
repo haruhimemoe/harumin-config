@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - CI runs CodeQL and a gitleaks scan of the full git history, and Dependabot covers dependencies and pinned actions. Dependencies are on their latest versions.
 
+## [0.11.0] - 2026-10-10
+
+### Added
+
+- A `replay` auto-embed (on by default): `.osr` files posted in chat get a score card.
+
 ## [0.10.0] - 2026-10-09
 
 ### Added

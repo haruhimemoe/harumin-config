@@ -24,20 +24,21 @@ export type Ruleset = (typeof RULESETS)[number];
 export const rulesetSchema = z.enum(RULESETS);
 
 /** The link types the bot can answer with a card, in the order the dashboard lists them. */
-export const AUTO_EMBED_KEYS = ["map", "match", "pack", "pool", "bb"] as const;
+export const AUTO_EMBED_KEYS = ["map", "match", "pack", "pool", "bb", "replay"] as const;
 /** One of AUTO_EMBED_KEYS. */
 export type AutoEmbedKey = (typeof AUTO_EMBED_KEYS)[number];
 
 /** Each link type on or off. */
 export type AutoEmbeds = Record<AutoEmbedKey, boolean>;
 
-/** A new guild's cards: beatmaps, packs and pools on; match and bb links off. */
+/** A new guild's cards: beatmaps, packs, pools and replays on; match and bb links off. */
 export const DEFAULT_AUTO_EMBEDS: Readonly<AutoEmbeds> = Object.freeze({
   map: true,
   match: false,
   pack: true,
   pool: true,
   bb: false,
+  replay: true,
 });
 
 /** What each auto-embed does, for the dashboard and /help. */
@@ -48,6 +49,7 @@ export const AUTO_EMBED_LABELS: Readonly<Record<AutoEmbedKey, { name: string; li
     pack: { name: "Packs", line: "packs.haruhime.moe links get a pack card." },
     pool: { name: "Pools", line: "pools.haruhime.moe links get a pool card." },
     bb: { name: "BBCode", line: "bb.haruhime.moe links get a small preview." },
+    replay: { name: "Replays", line: ".osr files get a score card and a render button." },
   });
 
 const autoEmbedsSchema = z.object({
@@ -56,6 +58,7 @@ const autoEmbedsSchema = z.object({
   pack: z.boolean().default(DEFAULT_AUTO_EMBEDS.pack),
   pool: z.boolean().default(DEFAULT_AUTO_EMBEDS.pool),
   bb: z.boolean().default(DEFAULT_AUTO_EMBEDS.bb),
+  replay: z.boolean().default(DEFAULT_AUTO_EMBEDS.replay),
 });
 
 /**
