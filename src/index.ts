@@ -6,8 +6,9 @@
  *       calls (which guilds a Discord user can manage, and dropping a guild's cached settings),
  *       and the cards the bot asks the site to draw as images (/osu, /recent, /top). Also what
  *       harumin and tourney.haruhime.moe agree on: a lineage's guild link and role rules, the
- *       posts tourney asks harumin to make, the role-sync jobs harumin claims and acks, and the
- *       Register button. zod only, no I/O.
+ *       posts tourney asks harumin to make, the role-sync jobs harumin claims and acks, the
+ *       Register button, the drafts harumin mirrors and the picks captains make there, and the
+ *       guilds role rules name. zod only, no I/O.
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
  * @modified Mon Oct 12, 2026
@@ -185,6 +186,8 @@ export const HARUMIN_COLLECTIONS = Object.freeze({
   members: "guild_members",
   /** One doc per osu! account: card accent, cover and favorite map (userSettingsSchema). */
   userSettings: "user_settings",
+  /** The bot's draft mirrors, one per edition: the channel it shows a tourney draft in. */
+  tourneyDrafts: "tourney_drafts",
 } as const);
 
 /**
@@ -1055,8 +1058,12 @@ export const REGISTER_BUTTON_PREFIX = "tourney:register:";
  * Role sync: harumin claims due jobs, each leased to it for ROLE_SYNC_LEASE_SECONDS. It applies a
  * job's `add`, `remove` and `nick` in that job's guild only, through its per-guild queue, and acks
  * within the lease; a job not acked by then is handed out again. `skipped` with `not-in-guild`
- * counts as applied. When harumin first sees a member in a linked guild, or on `/tourney roles`,
- * it calls refreshRoleSync for them.
+ * counts as applied. When harumin first sees a member in a guild roleGuilds names, or on
+ * `/tourney roles`, it calls refreshRoleSync for them.
+ *
+ * Drafts: harumin mirrors a running draft in a channel by reading draft, and sends a captain's
+ * pick to draftPick with the number of the pick its menu showed, so a stale menu or a second
+ * click is refused instead of landing twice.
  *
  * Acting for a person, harumin calls tourney's `/api/v1` with the same bearer and
  * DISCORD_USER_HEADER naming the Discord user.
@@ -1082,13 +1089,36 @@ export const TOURNEY_ROUTES = Object.freeze({
    * edition.
    */
   registration: "/api/harumin/editions/:editionId/registration",
+  /**
+   * GET ?guildId= → TourneyDraft: the edition's draft, read for that guild. DISCORD_USER_HEADER is
+   * optional and fills `viewer` (null without it). 400 unless guildId (and the header, when sent)
+   * is a Discord id, 404 for an unknown edition or one with no draft, 409 `discord-not-linked`
+   * when its lineage isn't linked to that guild or `discord-paused` while the link is off.
+   */
+  draft: "/api/harumin/editions/:editionId/draft",
+  /**
+   * POST DraftPickBody with DISCORD_USER_HEADER → 200 DraftPickAnswer: that user picks `player`
+   * for `team` as pick `overall`, as the captain on the clock or as draft staff, and gets the
+   * draft after it. 400 without the header or for a body that doesn't parse; 403 `forbidden` (not
+   * their pick) or `discord-user-unlinked` (no haruhime.moe account has that Discord); 404 and 409
+   * as for draft; 422 `out-of-order` (`overall` or `team` isn't on the clock: a stale menu or a
+   * second click), `closed` (every pick is made) or `bad-input` (the player isn't in the pool or
+   * is taken); 429 past that user's write limit.
+   */
+  draftPick: "/api/harumin/editions/:editionId/draft/picks",
+  /**
+   * GET → RoleGuilds: every guild a role rule of an enabled link names. harumin refreshes the roles
+   * of members it sees only in these.
+   */
+  roleGuilds: "/api/harumin/role-guilds",
 } as const);
 
 /**
- * The header naming the Discord user (by id) an `/api/v1` call from harumin acts for. With
- * tourney's HARUMIN_SERVICE_SECRET as the bearer, tourney finds that user's haruhime.moe account
- * and checks their permissions as on the site; an unlinked or banned account gets 403. A read may
- * leave it out and sees what anyone sees; a write without it gets 400.
+ * The header naming the Discord user (by id) a call from harumin acts for: an `/api/v1` call or
+ * TOURNEY_ROUTES.draftPick. With tourney's HARUMIN_SERVICE_SECRET as the bearer, tourney finds
+ * that user's haruhime.moe account and checks their permissions as on the site; an unlinked or
+ * banned account gets 403. A read may leave it out and sees what anyone sees; a write without it
+ * gets 400. TOURNEY_ROUTES.draft only reads it to fill `viewer`.
  */
 export const DISCORD_USER_HEADER = "x-discord-user";
 
@@ -1258,3 +1288,107 @@ export const registrationButtonSchema = z.discriminatedUnion("outcome", [
 
 /** What a Register button does for one Discord user. */
 export type RegistrationButton = z.infer<typeof registrationButtonSchema>;
+
+// tourney drafts on Discord, and the guilds role rules name.
+
+/** A player in a draft: osu! id and name, global rank (null when unranked) and country. */
+export const draftPlayerSchema = z.object({
+  osuId: osuIdSchema,
+  username: z.string().min(1).max(32),
+  rank: z.number().int().positive().nullable(),
+  country: countryCodeSchema,
+});
+
+/** A player in a draft. */
+export type DraftPlayer = z.infer<typeof draftPlayerSchema>;
+
+/** A team's name in a draft: tourney's longest is 32. */
+const teamName = z.string().min(1).max(32);
+/** A moment: ISO 8601 with Z or an offset. */
+const instant = z.iso.datetime({ offset: true });
+
+/**
+ * tourney's answer to TOURNEY_ROUTES.draft: the edition and its page, how many picks the draft
+ * makes in all, the pick on the clock, the teams up next, the picks made in order, the players
+ * left, and what the Discord user asking may do. `overall` counts picks from 0, `round` from 1.
+ * At most 1024 picks and 1024 players.
+ */
+export const tourneyDraftSchema = z.object({
+  lineage: z.object({ slug: z.string().min(1), name: z.string().min(1) }),
+  edition: z.object({ id: tourneyIdSchema, slug: z.string().min(1), name: z.string().min(1) }),
+  url: httpsUrlSchema,
+  total: z.number().int().min(1).max(1024),
+  /**
+   * The pick on the clock: its number, round, team, that team's captain and its deadline. Null
+   * once every pick is made.
+   */
+  clock: z
+    .object({
+      overall: z.number().int().min(0),
+      round: z.number().int().min(1),
+      team: tourneyIdSchema,
+      teamName,
+      captain: draftPlayerSchema,
+      deadline: instant,
+    })
+    .nullable(),
+  /** The teams picking after the one on the clock, in order, at most five. */
+  next: z.array(teamName).max(5),
+  picks: z
+    .array(
+      z.object({
+        overall: z.number().int().min(0),
+        round: z.number().int().min(1),
+        team: tourneyIdSchema,
+        teamName,
+        player: draftPlayerSchema,
+        at: instant,
+      }),
+    )
+    .max(1024),
+  /** The players not picked yet, best rank first. */
+  pool: z.array(draftPlayerSchema).max(1024),
+  /**
+   * The Discord user DISCORD_USER_HEADER names: whether a haruhime.moe account has that Discord,
+   * whether they may manage the draft (and pick for any team), and the team they captain. Null
+   * without the header.
+   */
+  viewer: z
+    .object({ linked: z.boolean(), manage: z.boolean(), team: tourneyIdSchema.nullable() })
+    .nullable(),
+});
+
+/** An edition's draft, as harumin shows it. */
+export type TourneyDraft = z.infer<typeof tourneyDraftSchema>;
+
+/**
+ * The body of TOURNEY_ROUTES.draftPick: the guild it was picked in, the team picking, the
+ * player's osu! id and `overall`, the pick the menu was made for (0 to 1023), so a stale menu or a
+ * second click is refused. Strict: unknown keys fail.
+ */
+export const draftPickBodySchema = z
+  .object({
+    guildId: snowflakeSchema,
+    team: tourneyIdSchema,
+    player: osuIdSchema,
+    overall: z.number().int().min(0).max(1023),
+  })
+  .strict();
+
+/** The body of TOURNEY_ROUTES.draftPick. */
+export type DraftPickBody = z.infer<typeof draftPickBodySchema>;
+
+/** tourney's 200 answer to TOURNEY_ROUTES.draftPick: the draft after the pick. */
+export const draftPickAnswerSchema = z.object({ draft: tourneyDraftSchema });
+
+/** tourney's answer to a pick. */
+export type DraftPickAnswer = z.infer<typeof draftPickAnswerSchema>;
+
+/**
+ * tourney's answer to TOURNEY_ROUTES.roleGuilds: every guild a role rule of an enabled link
+ * names, at most 10,000.
+ */
+export const roleGuildsSchema = z.object({ guildIds: z.array(snowflakeSchema).max(10_000) });
+
+/** The guilds role rules name. */
+export type RoleGuilds = z.infer<typeof roleGuildsSchema>;

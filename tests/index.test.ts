@@ -3,7 +3,7 @@
  * @desc Guild settings defaults, reading stored documents (bad ones fall back), patches (strict,
  *       partial, never mutating), track entries, the service contract, guild icon URLs, the
  *       card image contract and the tourney contract (role rules, guild links, harumin posts,
- *       role sync and the Register button).
+ *       role sync, the Register button, drafts on Discord and role guilds).
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
  * @modified Mon Oct 12, 2026
@@ -21,6 +21,8 @@ import {
   compareCardSchema,
   DEFAULT_AUTO_EMBEDS,
   defaultGuildSettings,
+  draftPickAnswerSchema,
+  draftPickBodySchema,
   guildIconUrl,
   guildRolesSchema,
   guildSettingsPatchSchema,
@@ -47,6 +49,7 @@ import {
   registrationButtonSchema,
   revalidateBodySchema,
   revalidateUserBodySchema,
+  roleGuildsSchema,
   roleRuleSchema,
   roleRulesSchema,
   roleSyncAckBodySchema,
@@ -60,6 +63,7 @@ import {
   serverCardSchema,
   simulateCardSchema,
   TOURNEY_ROUTES,
+  tourneyDraftSchema,
   tourneyGuildSchema,
   tourneyLinkSchema,
   tourneyPostAnswerSchema,
@@ -210,6 +214,9 @@ describe("tracks and the service contract", () => {
         "compareCardSchema",
         "compareSideSchema",
         "defaultGuildSettings",
+        "draftPickAnswerSchema",
+        "draftPickBodySchema",
+        "draftPlayerSchema",
         "guildChannelsSchema",
         "guildIconUrl",
         "guildRolesSchema",
@@ -233,6 +240,7 @@ describe("tracks and the service contract", () => {
         "registrationButtonSchema",
         "revalidateBodySchema",
         "revalidateUserBodySchema",
+        "roleGuildsSchema",
         "roleRuleSchema",
         "roleRulesSchema",
         "roleSyncAckBodySchema",
@@ -248,6 +256,7 @@ describe("tracks and the service contract", () => {
         "serverCardSchema",
         "simulateCardSchema",
         "snowflakeSchema",
+        "tourneyDraftSchema",
         "tourneyEmbedSchema",
         "tourneyGuildSchema",
         "tourneyLinkSchema",
@@ -811,5 +820,91 @@ describe("tourney", () => {
     for (const path of Object.values(TOURNEY_ROUTES))
       expect(path.startsWith("/api/harumin/")).toBe(true);
     expect(SERVICE_ROUTES.guildRoles).toBe("/guilds/:guildId/roles");
+  });
+});
+
+describe("tourney drafts", () => {
+  const G = "123456789012345678";
+  const A = "a".repeat(24);
+  const B = "b".repeat(24);
+  const player = (osuId: number, rank: number | null, country: string | null) => ({
+    osuId,
+    username: `player${osuId}`,
+    rank,
+    country,
+  });
+  const pick = {
+    overall: 0,
+    round: 1,
+    team: A,
+    teamName: "Team One",
+    player: player(2003, 120, "JP"),
+    at: "2026-10-12T18:00:00.000Z",
+  };
+  const draft = {
+    lineage: { slug: "egc", name: "Evergreen Cup" },
+    edition: { id: "c".repeat(24), slug: "egc2026", name: "Evergreen Cup 2026" },
+    url: "https://tourney.haruhime.moe/egc/egc2026",
+    total: 4,
+    clock: {
+      overall: 1,
+      round: 1,
+      team: B,
+      teamName: "Team Two",
+      captain: player(2002, 840, "US"),
+      deadline: "2026-10-12T18:02:00.000Z",
+    },
+    next: ["Team Two", "Team One"],
+    picks: [pick],
+    pool: [
+      player(2004, 15, "KR"),
+      player(2005, 230, "DE"),
+      player(2006, 4100, "BR"),
+      player(2007, null, null),
+    ],
+    viewer: { linked: true, manage: false, team: B },
+  };
+
+  it("parses a draft on the clock, read with or without a Discord user, and a finished one", () => {
+    expect(tourneyDraftSchema.parse(draft)).toEqual(draft);
+    expect(tourneyDraftSchema.parse({ ...draft, viewer: null }).viewer).toBeNull();
+    expect(tourneyDraftSchema.parse({ ...draft, clock: null }).clock).toBeNull();
+  });
+
+  it("refuses a bad team, a deadline without offset, a bad country, 6 next and 1025 picks", () => {
+    const refused = [
+      { ...draft, clock: { ...draft.clock, team: "x" } },
+      { ...draft, viewer: { ...draft.viewer, team: "x" } },
+      { ...draft, clock: { ...draft.clock, deadline: "2026-10-12T18:02:00" } },
+      { ...draft, pool: [player(2008, 1, "usa")] },
+      { ...draft, next: Array(6).fill("Team One") },
+      { ...draft, picks: Array(1025).fill(pick) },
+    ];
+    for (const view of refused) expect(tourneyDraftSchema.safeParse(view).success).toBe(false);
+  });
+
+  it("takes a strict pick body naming its pick, and answers the draft after it", () => {
+    const body = { guildId: G, team: B, player: 2004, overall: 1 };
+    expect(draftPickBodySchema.parse(body)).toEqual(body);
+    for (const refused of [
+      { ...body, extra: 1 },
+      { ...body, overall: -1 },
+      { ...body, player: 0 },
+      { ...body, guildId: "1" },
+    ])
+      expect(draftPickBodySchema.safeParse(refused).success).toBe(false);
+    expect(draftPickAnswerSchema.parse({ draft })).toEqual({ draft });
+  });
+
+  it("parses role guilds, refusing a non-snowflake", () => {
+    expect(roleGuildsSchema.parse({ guildIds: [G] })).toEqual({ guildIds: [G] });
+    expect(roleGuildsSchema.safeParse({ guildIds: ["general"] }).success).toBe(false);
+  });
+
+  it("names the draft, pick and role guild routes and the draft mirror collection", () => {
+    expect(TOURNEY_ROUTES.draft).toBe("/api/harumin/editions/:editionId/draft");
+    expect(TOURNEY_ROUTES.draftPick).toBe("/api/harumin/editions/:editionId/draft/picks");
+    expect(TOURNEY_ROUTES.roleGuilds).toBe("/api/harumin/role-guilds");
+    expect(HARUMIN_COLLECTIONS.tourneyDrafts).toBe("tourney_drafts");
   });
 });

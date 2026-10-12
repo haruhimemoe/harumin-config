@@ -17,4 +17,5 @@ assert.equal(defaultGuildSettings("123456789012345678").autoEmbeds.map, true);
 assert.equal(HARUMIN_COLLECTIONS.guildSettings, "guild_settings");
 assert.equal(CARD_ROUTES.profile, "/api/cards/profile");
 assert.equal(TOURNEY_ROUTES.claimRoleSync, "/api/harumin/role-sync/claim");
+assert.equal(TOURNEY_ROUTES.draftPick, "/api/harumin/editions/:editionId/draft/picks");
 console.log("smoke: ok");

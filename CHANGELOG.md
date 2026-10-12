@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Drafts on Discord. `TOURNEY_ROUTES.draft` answers an edition's draft as a linked guild reads it (`tourneyDraftSchema`, its players `draftPlayerSchema`): the pick on the clock and its deadline, up to five teams next, the picks made, the players left by rank, and what the Discord user named by `DISCORD_USER_HEADER` may do. `TOURNEY_ROUTES.draftPick` takes a captain's pick (`draftPickBodySchema`), which names the pick its menu was made for so a stale menu or a second click is refused, and answers the draft after it (`draftPickAnswerSchema`).
+- `TOURNEY_ROUTES.roleGuilds` answers every guild a role rule of an enabled link names (`roleGuildsSchema`). harumin refreshes the roles of members it sees only in those.
+- `HARUMIN_COLLECTIONS.tourneyDrafts` (`tourney_drafts`): the bot's draft mirrors, one per edition.
+- Each new schema exports its type under the PascalCase name: `DraftPlayer`, `TourneyDraft`, `DraftPickBody`, `DraftPickAnswer` and `RoleGuilds`.
+
 ## [0.13.0] - 2026-10-12
 
 ### Added

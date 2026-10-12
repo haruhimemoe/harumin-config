@@ -2,7 +2,7 @@
 
 The settings contract between [harumin](https://github.com/haruhimemoe/harumin), the osu! Discord bot, and [harumin.haruhime.moe](https://github.com/haruhimemoe/harumin.haruhime.moe), its dashboard. Both import the same zod schemas, so the site never writes a document the bot can't read.
 
-It also holds harumin's contract with [tourney.haruhime.moe](https://tourney.haruhime.moe): guild links, role rules, role sync and channel posts.
+It also holds harumin's contract with [tourney.haruhime.moe](https://tourney.haruhime.moe): guild links, role rules, role sync, channel posts and drafts on Discord.
 
 ```sh
 bun add @haruhimemoe/harumin-config zod
@@ -28,9 +28,12 @@ bun add @haruhimemoe/harumin-config zod
 | `ROLE_TRIGGERS`, `ROLE_REVOKES`, `MAX_ROLE_RULES`, `roleTriggerSchema`, `roleRuleSchema`, `roleRulesSchema` | tourney's role rules: harumin gives a role while a trigger holds (`registered`, `approved`, `captain`, `eliminated`, `donated`, `attendingInPerson`, `staffRole:<role>`, `onTeam:<team id>`) and takes it back as the revoke says (`never`, `onWithdraw`, `onEditionDone`, `onRefund`). At most 25 per lineage, one guild and one revoke per role. |
 | `tourneyLinkSchema`, `notificationRouteSchema` | A lineage's link to Discord (main and staff guild, on switch, nickname sync, rules), and the channel a harumin post goes to. |
 | `guildRolesSchema`, `tourneyPostBodySchema`, `tourneyEmbedSchema`, `tourneyPostAnswerSchema`, `REGISTER_BUTTON_PREFIX` | The two bot routes tourney calls. `SERVICE_ROUTES.guildRoles` answers a guild's roles and what harumin may do with them; `SERVICE_ROUTES.tourneyPost` posts one embed with no mentions, with an optional Register button (custom id `REGISTER_BUTTON_PREFIX` + edition id), and answers the message's id. |
-| `TOURNEY_ROUTES`, `DISCORD_USER_HEADER` | tourney's routes for harumin (bearer: tourney's `HARUMIN_SERVICE_SECRET`), and the header naming the Discord user an `/api/v1` call acts for. |
+| `TOURNEY_ROUTES`, `DISCORD_USER_HEADER` | tourney's routes for harumin (bearer: tourney's `HARUMIN_SERVICE_SECRET`), and the header naming the Discord user an `/api/v1` call or a draft pick acts for. |
 | `roleSyncJobSchema`, `roleSyncClaimBodySchema`, `roleSyncClaimAnswerSchema`, `roleSyncAckBodySchema`, `roleSyncRefreshBodySchema`, `ROLE_SYNC_ERRORS`, `ROLE_SYNC_LEASE_SECONDS`, `MAX_ROLE_SYNC_CLAIM` | Role sync: harumin claims up to 50 jobs at a time, each leased for 120 seconds, applies a member's roles and nickname in that guild, and acks each job as applied, skipped or failed. |
 | `tourneyGuildSchema`, `registrationButtonSchema` | tourney's answers: the lineages linked to a guild with their running editions, and what the Register button does for a Discord user (one click, the form, link an account, or refused). |
+| `tourneyDraftSchema`, `draftPlayerSchema` | `TOURNEY_ROUTES.draft`'s answer: an edition's draft as a linked guild reads it. The pick on the clock and its deadline, up to five teams next, the picks made, the players left (best rank first), and what the Discord user asking may do. harumin keeps one mirror per edition in `HARUMIN_COLLECTIONS.tourneyDrafts`. |
+| `draftPickBodySchema`, `draftPickAnswerSchema` | `TOURNEY_ROUTES.draftPick`: a captain's pick from Discord, naming the pick its menu was made for (`overall`) so a stale menu or a second click is refused, and the draft after it. |
+| `roleGuildsSchema` | `TOURNEY_ROUTES.roleGuilds`' answer: every guild a role rule of an enabled link names. |
 
 ## License
 
