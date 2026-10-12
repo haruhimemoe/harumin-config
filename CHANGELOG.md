@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-12
+
 ### Added
 
 - Drafts on Discord. `TOURNEY_ROUTES.draft` answers an edition's draft as a linked guild reads it (`tourneyDraftSchema`, its players `draftPlayerSchema`): the pick on the clock and its deadline, up to five teams next, the picks made, the players left by rank, and what the Discord user named by `DISCORD_USER_HEADER` may do. `TOURNEY_ROUTES.draftPick` takes a captain's pick (`draftPickBodySchema`), which names the pick its menu was made for so a stale menu or a second click is refused, and answers the draft after it (`draftPickAnswerSchema`).
@@ -108,7 +110,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Guild settings (`guildSettingsSchema`, `defaultGuildSettings`, `readGuildSettings`, `guildSettingsPatchSchema`, `applyGuildSettingsPatch`), auto-embed keys, defaults and labels, `/track` entries, collection names, the bot's service routes and their bodies, and `guildIconUrl`.
 
-[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.13.0...HEAD
+[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/haruhimemoe/harumin-config/compare/v0.11.0...v0.11.1
