@@ -4,11 +4,13 @@
  *       guild's settings (which links the bot answers with a card, the default ruleset), the
  *       /track entries, the collection names both read, and the bot's service routes the site
  *       calls (which guilds a Discord user can manage, and dropping a guild's cached settings),
- *       and the cards the bot asks the site to draw as images (/osu, /recent, /top). zod only, no
- *       I/O.
+ *       and the cards the bot asks the site to draw as images (/osu, /recent, /top). Also what
+ *       harumin and tourney.haruhime.moe agree on: a lineage's guild link and role rules, the
+ *       posts tourney asks harumin to make, the role-sync jobs harumin claims and acks, and the
+ *       Register button. zod only, no I/O.
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
- * @modified Wed Oct 7, 2026
+ * @modified Mon Oct 12, 2026
  */
 
 import { z } from "zod";
@@ -185,7 +187,11 @@ export const HARUMIN_COLLECTIONS = Object.freeze({
   userSettings: "user_settings",
 } as const);
 
-/** The bot's service routes, under its SERVICE_URL, bearer HARUMIN_SERVICE_TOKEN. */
+/**
+ * The bot's service routes, under its SERVICE_URL, bearer HARUMIN_SERVICE_TOKEN. The dashboard
+ * calls them, and tourney.haruhime.moe calls manageableGuilds, guildChannels, guildRoles and
+ * tourneyPost with the same token.
+ */
 export const SERVICE_ROUTES = Object.freeze({
   /** GET ?discordId= → ManageableGuilds. */
   manageableGuilds: "/guilds/manageable",
@@ -195,6 +201,17 @@ export const SERVICE_ROUTES = Object.freeze({
   revalidate: "/settings/revalidate",
   /** POST { osuId } → 204. The bot drops its cached card settings and profile for that player. */
   revalidateUser: "/users/revalidate",
+  /**
+   * GET /guilds/{id}/roles → GuildRoles: the guild's roles and what harumin may do with them, for
+   * tourney's role rules. 404 when harumin isn't in that guild.
+   */
+  guildRoles: "/guilds/:guildId/roles",
+  /**
+   * POST TourneyPostBody → 200 TourneyPostAnswer: harumin posts tourney's embed in that channel.
+   * 400 for a body that doesn't parse, 403 when harumin can't post there, 404 for an unknown
+   * channel, 429 with Retry-After (seconds) while Discord limits it, 5xx when Discord failed.
+   */
+  tourneyPost: "/tourney/post",
 } as const);
 
 /** One guild in the dashboard's picker. */
@@ -793,3 +810,451 @@ export const inviteCardSchema = z.object({
 
 /** /invite's card. */
 export type InviteCard = z.infer<typeof inviteCardSchema>;
+
+// tourney.haruhime.moe and harumin: guild links, role rules, posts, role sync, the Register button.
+
+/** A tourney document id: 24 lowercase hex digits. */
+const tourneyIdSchema = z.string().regex(/^[0-9a-f]{24}$/, "Not a tourney id.");
+/** A link Discord can show: https only, at most 2048 characters. */
+const httpsUrlSchema = z
+  .url()
+  .max(2048)
+  .refine((url) => url.startsWith("https://"), "Not an https URL.");
+/** A lineage's or an edition's slug, as it appears in tourney's URLs. */
+const tourneySlugSchema = z.string().min(1).max(64);
+/** A lineage's or an edition's name. */
+const tourneyNameSchema = z.string().min(1).max(256);
+
+/**
+ * What makes a member hold a role, besides `staffRole:<role>` and `onTeam:<team id>`:
+ * `registered` (a pending, waitlisted or approved registration), `approved`, `captain`,
+ * `eliminated` (out of the bracket), `donated` (the crowdfund module) and `attendingInPerson` (a
+ * LAN seat, the LAN module).
+ */
+export const ROLE_TRIGGERS = [
+  "registered",
+  "approved",
+  "captain",
+  "eliminated",
+  "donated",
+  "attendingInPerson",
+] as const;
+
+/**
+ * When harumin takes a role back. `never`: sync never does. `onWithdraw`: once its trigger stops
+ * holding. `onEditionDone`: that, or once the edition is done. `onRefund`: `donated` only, once the
+ * donation is refunded.
+ */
+export const ROLE_REVOKES = ["never", "onWithdraw", "onEditionDone", "onRefund"] as const;
+
+/** One of ROLE_REVOKES. */
+export type RoleRevoke = (typeof ROLE_REVOKES)[number];
+
+/** The most role rules one lineage has, team rules included. */
+export const MAX_ROLE_RULES = 25;
+
+/**
+ * A rule's trigger: one of ROLE_TRIGGERS, `staffRole:<role>` (a preset role's name or a custom
+ * role's id) or `onTeam:<team id>`.
+ */
+export const roleTriggerSchema = z.union(
+  [
+    z.enum(ROLE_TRIGGERS),
+    z.string().regex(/^staffRole:[a-z0-9-]{1,32}$/),
+    z.string().regex(/^onTeam:[0-9a-f]{24}$/),
+  ],
+  { error: "Not a role trigger." },
+);
+
+/** A rule's trigger. */
+export type RoleTrigger = z.infer<typeof roleTriggerSchema>;
+
+/**
+ * One role rule: harumin gives `roleId` in `guildId` while `trigger` holds, and takes it back as
+ * `revoke` says. `editionId` null means any edition of the lineage; set, only that edition.
+ * `onRefund` is only for `donated`, and an `onTeam:` rule names its edition.
+ */
+export const roleRuleSchema = z
+  .object({
+    id: tourneyIdSchema,
+    guildId: snowflakeSchema,
+    roleId: snowflakeSchema,
+    trigger: roleTriggerSchema,
+    revoke: z.enum(ROLE_REVOKES),
+    editionId: tourneyIdSchema.nullable(),
+  })
+  .refine((rule) => rule.revoke !== "onRefund" || rule.trigger === "donated", {
+    error: "onRefund is only for donated.",
+    path: ["revoke"],
+  })
+  .refine((rule) => !rule.trigger.startsWith("onTeam:") || rule.editionId !== null, {
+    error: "A team rule names its edition.",
+    path: ["editionId"],
+  });
+
+/** One role rule. */
+export type RoleRule = z.infer<typeof roleRuleSchema>;
+
+/**
+ * A lineage's role rules: at most MAX_ROLE_RULES, no two with one id, and every rule on a role in
+ * the same guild with the same revoke. An issue about one rule has a path starting with its index.
+ */
+export const roleRulesSchema = z
+  .array(roleRuleSchema)
+  .max(MAX_ROLE_RULES, `A lineage has at most ${MAX_ROLE_RULES} role rules.`)
+  .superRefine((rules, ctx) => {
+    const ids = new Set<string>();
+    const firstOnRole = new Map<string, RoleRule>();
+    for (const [index, rule] of rules.entries()) {
+      if (ids.has(rule.id)) {
+        ctx.addIssue({ code: "custom", message: "Another rule has this id.", path: [index, "id"] });
+      }
+      ids.add(rule.id);
+      const first = firstOnRole.get(rule.roleId);
+      if (first === undefined) {
+        firstOnRole.set(rule.roleId, rule);
+        continue;
+      }
+      if (first.guildId !== rule.guildId) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Every rule on one role needs the same server.",
+          path: [index, "guildId"],
+        });
+      }
+      if (first.revoke !== rule.revoke) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Every rule on one role needs the same revoke.",
+          path: [index, "revoke"],
+        });
+      }
+    }
+  });
+
+/** A lineage's role rules. */
+export type RoleRules = z.infer<typeof roleRulesSchema>;
+
+/**
+ * A lineage's link to Discord as tourney stores it: its main guild, an optional staff guild, the
+ * switch (off: no roles, posts or pings), nickname sync (nicknames become osu! usernames), the
+ * role rules, and the Discord id of whoever linked it (null once their account is deleted).
+ */
+export const tourneyLinkSchema = z.object({
+  lineageId: tourneyIdSchema,
+  guildId: snowflakeSchema,
+  staffGuildId: snowflakeSchema.nullable(),
+  enabled: z.boolean(),
+  nicknames: z.boolean(),
+  rules: roleRulesSchema,
+  linkedBy: snowflakeSchema.nullable(),
+  linkedAt: z.coerce.date(),
+});
+
+/** A lineage's link to Discord. */
+export type TourneyLink = z.infer<typeof tourneyLinkSchema>;
+
+/** Where a harumin post goes: a channel in a guild. */
+export const notificationRouteSchema = z.object({
+  guildId: snowflakeSchema,
+  channelId: snowflakeSchema,
+});
+
+/** Where a harumin post goes. */
+export type NotificationRoute = z.infer<typeof notificationRouteSchema>;
+
+/**
+ * harumin's answer to SERVICE_ROUTES.guildRoles: a guild's roles (at most 250, Discord's cap) and
+ * whether harumin has Manage Roles and Manage Nicknames there. An `assignable` role is one harumin
+ * can give: not @everyone, not managed by a bot or an integration, and below harumin's top role.
+ */
+export const guildRolesSchema = z.object({
+  roles: z
+    .array(
+      z.object({
+        id: snowflakeSchema,
+        name: z.string().max(100),
+        /** 0xRRGGBB; 0 is no color. */
+        color: z.number().int().min(0).max(0xffffff),
+        position: z.number().int().min(0),
+        assignable: z.boolean(),
+      }),
+    )
+    .max(250),
+  manageRoles: z.boolean(),
+  manageNicknames: z.boolean(),
+});
+
+/** A guild's roles, as harumin sees them. */
+export type GuildRoles = z.infer<typeof guildRolesSchema>;
+
+/**
+ * The one embed in a tourney post: the edition (or lineage) linking its page as the author, a
+ * title and its link, an optional description, the footer and the time. Discord's limits per
+ * field, and 6000 characters in all. Strict: unknown keys fail.
+ */
+export const tourneyEmbedSchema = z
+  .object({
+    author: z.object({ name: z.string().min(1).max(256), url: httpsUrlSchema }).strict(),
+    title: z.string().min(1).max(256),
+    url: httpsUrlSchema,
+    description: z.string().max(4096).optional(),
+    footer: z.object({ text: z.string().max(2048) }).strict(),
+    timestamp: z.iso.datetime({ offset: true }),
+  })
+  .strict()
+  .refine(
+    (embed) =>
+      embed.author.name.length +
+        embed.title.length +
+        (embed.description?.length ?? 0) +
+        embed.footer.text.length <=
+      6000,
+    "An embed holds at most 6000 characters.",
+  );
+
+/** One embed in a tourney post. */
+export type TourneyEmbed = z.infer<typeof tourneyEmbedSchema>;
+
+/**
+ * The body of SERVICE_ROUTES.tourneyPost: the channel, tourney's key for this delivery (a retry
+ * carries the same key), the message (one embed, no mention parsed, no content) and `register`,
+ * which puts a Register button under it (custom id REGISTER_BUTTON_PREFIX + editionId), or null.
+ * Strict at every level: unknown keys fail.
+ */
+export const tourneyPostBodySchema = notificationRouteSchema
+  .extend({
+    key: z.string().min(1).max(300),
+    message: z
+      .object({
+        embeds: z.tuple([tourneyEmbedSchema]),
+        allowed_mentions: z.object({ parse: z.tuple([]) }).strict(),
+      })
+      .strict(),
+    register: z.object({ editionId: tourneyIdSchema }).strict().nullable(),
+  })
+  .strict();
+
+/** The body of SERVICE_ROUTES.tourneyPost. */
+export type TourneyPostBody = z.infer<typeof tourneyPostBodySchema>;
+
+/** harumin's 200 answer to SERVICE_ROUTES.tourneyPost: the posted message's id. */
+export const tourneyPostAnswerSchema = z.object({ messageId: snowflakeSchema });
+
+/** harumin's answer to a post. */
+export type TourneyPostAnswer = z.infer<typeof tourneyPostAnswerSchema>;
+
+/** A Register button's custom id is this plus the edition's id. */
+export const REGISTER_BUTTON_PREFIX = "tourney:register:";
+
+/**
+ * tourney.haruhime.moe's routes for harumin, under tourney's URL. Every call carries
+ * `Authorization: Bearer <secret>`, the secret being tourney's HARUMIN_SERVICE_SECRET. A wrong
+ * secret gets 401; every call gets 503 while tourney has none set.
+ *
+ * Role sync: harumin claims due jobs, each leased to it for ROLE_SYNC_LEASE_SECONDS. It applies a
+ * job's `add`, `remove` and `nick` in that job's guild only, through its per-guild queue, and acks
+ * within the lease; a job not acked by then is handed out again. `skipped` with `not-in-guild`
+ * counts as applied. When harumin first sees a member in a linked guild, or on `/tourney roles`,
+ * it calls refreshRoleSync for them.
+ *
+ * Acting for a person, harumin calls tourney's `/api/v1` with the same bearer and
+ * DISCORD_USER_HEADER naming the Discord user.
+ */
+export const TOURNEY_ROUTES = Object.freeze({
+  /** GET → TourneyGuild, the lineages linked to that guild. 400 unless guildId is a Discord id. */
+  guild: "/api/harumin/guilds/:guildId",
+  /** POST RoleSyncClaimBody → 200 RoleSyncClaimAnswer: due jobs of links that are on, leased. */
+  claimRoleSync: "/api/harumin/role-sync/claim",
+  /**
+   * POST RoleSyncAckBody → 200 { acked: number }, the results that matched a job (unknown ids are
+   * ignored). A job that changed during its lease stays due at its new version. A failure with
+   * `missing-permissions`, `role-too-high`, `unknown-role` or `unknown-guild` waits for the next
+   * change; `rate-limited` and `discord-error` are tried again after a backoff, or after
+   * retryAfterSeconds when that is longer.
+   */
+  ackRoleSync: "/api/harumin/role-sync/ack",
+  /** POST RoleSyncRefreshBody → 200 { queued: number }, the jobs recomputed. 429 when too often. */
+  refreshRoleSync: "/api/harumin/role-sync/refresh",
+  /**
+   * GET ?guildId=&discordId= → RegistrationButton: what that edition's Register button, pressed in
+   * that guild, does for that Discord user. 400 unless both are Discord ids, 404 for an unknown
+   * edition.
+   */
+  registration: "/api/harumin/editions/:editionId/registration",
+} as const);
+
+/**
+ * The header naming the Discord user (by id) an `/api/v1` call from harumin acts for. With
+ * tourney's HARUMIN_SERVICE_SECRET as the bearer, tourney finds that user's haruhime.moe account
+ * and checks their permissions as on the site; an unlinked or banned account gets 403. A read may
+ * leave it out and sees what anyone sees; a write without it gets 400.
+ */
+export const DISCORD_USER_HEADER = "x-discord-user";
+
+/** How long a claimed job is harumin's: ack it within this, or it is handed out again. */
+export const ROLE_SYNC_LEASE_SECONDS = 120;
+
+/** The most jobs one claim hands out, and the most results one ack carries. */
+export const MAX_ROLE_SYNC_CLAIM = 50;
+
+/**
+ * tourney's answer to TOURNEY_ROUTES.guild: each lineage linked to the guild, as its main guild or
+ * its staff guild, whether that link is on, and the lineage's running editions (not archived, not
+ * done). At most 100 links, each with at most 100 editions.
+ */
+export const tourneyGuildSchema = z.object({
+  links: z
+    .array(
+      z.object({
+        lineage: z.object({
+          id: tourneyIdSchema,
+          slug: tourneySlugSchema,
+          name: tourneyNameSchema,
+        }),
+        slot: z.enum(["main", "staff"]),
+        enabled: z.boolean(),
+        editions: z
+          .array(
+            z.object({
+              id: tourneyIdSchema,
+              slug: tourneySlugSchema,
+              name: tourneyNameSchema,
+              /** The edition's phase, e.g. "registration". */
+              phase: z.string().min(1).max(32),
+            }),
+          )
+          .max(100),
+      }),
+    )
+    .max(100),
+});
+
+/** The lineages linked to a guild. */
+export type TourneyGuild = z.infer<typeof tourneyGuildSchema>;
+
+/**
+ * One role-sync job: a member's whole mapped-role state in one guild, at `version`. harumin gives
+ * every role in `add`, takes every role in `remove` and sets the nickname to `nick` (null: leaves
+ * it alone), in `guildId` only. Every role is one the lineage's rules map; harumin never creates
+ * or deletes a role.
+ */
+export const roleSyncJobSchema = z.object({
+  id: tourneyIdSchema,
+  version: z.number().int().positive(),
+  guildId: snowflakeSchema,
+  discordId: snowflakeSchema,
+  add: z.array(snowflakeSchema).max(MAX_ROLE_RULES),
+  remove: z.array(snowflakeSchema).max(MAX_ROLE_RULES),
+  nick: z.string().min(1).max(32).nullable(),
+});
+
+/** One role-sync job. */
+export type RoleSyncJob = z.infer<typeof roleSyncJobSchema>;
+
+/** The body of TOURNEY_ROUTES.claimRoleSync: how many jobs harumin takes, 1 to 50 (default 50). */
+export const roleSyncClaimBodySchema = z
+  .object({
+    limit: z.number().int().min(1).max(MAX_ROLE_SYNC_CLAIM).default(MAX_ROLE_SYNC_CLAIM),
+  })
+  .strict();
+
+/** The body of TOURNEY_ROUTES.claimRoleSync. */
+export type RoleSyncClaimBody = z.infer<typeof roleSyncClaimBodySchema>;
+
+/** tourney's answer to TOURNEY_ROUTES.claimRoleSync: the jobs now leased to harumin. */
+export const roleSyncClaimAnswerSchema = z.object({
+  jobs: z.array(roleSyncJobSchema).max(MAX_ROLE_SYNC_CLAIM),
+});
+
+/** The jobs a claim handed out. */
+export type RoleSyncClaimAnswer = z.infer<typeof roleSyncClaimAnswerSchema>;
+
+/**
+ * Why harumin couldn't apply a job: `missing-permissions` (no Manage Roles or Manage Nicknames),
+ * `role-too-high` (a role sits above harumin's top role), `unknown-role`, `unknown-guild`,
+ * `rate-limited` (Discord said to wait) or `discord-error` (anything else from Discord).
+ */
+export const ROLE_SYNC_ERRORS = [
+  "missing-permissions",
+  "role-too-high",
+  "unknown-role",
+  "unknown-guild",
+  "rate-limited",
+  "discord-error",
+] as const;
+
+/** One of ROLE_SYNC_ERRORS. */
+export type RoleSyncError = (typeof ROLE_SYNC_ERRORS)[number];
+
+/** Which job, and the version harumin claimed. */
+const ackedJob = { id: tourneyIdSchema, version: z.number().int().positive() };
+
+/**
+ * The body of TOURNEY_ROUTES.ackRoleSync: 1 to 50 results, one per claimed job, by id and the
+ * version claimed. `applied`; `skipped` with `not-in-guild` (the member isn't in that guild,
+ * counted as applied); or `failed` with one of ROLE_SYNC_ERRORS and how long Discord asked to
+ * wait in seconds (null when it didn't). Strict at every level: unknown keys fail.
+ */
+export const roleSyncAckBodySchema = z
+  .object({
+    results: z
+      .array(
+        z.discriminatedUnion("outcome", [
+          z.object({ ...ackedJob, outcome: z.literal("applied") }).strict(),
+          z
+            .object({
+              ...ackedJob,
+              outcome: z.literal("skipped"),
+              reason: z.literal("not-in-guild"),
+            })
+            .strict(),
+          z
+            .object({
+              ...ackedJob,
+              outcome: z.literal("failed"),
+              error: z.enum(ROLE_SYNC_ERRORS),
+              retryAfterSeconds: z.number().int().min(1).max(86_400).nullable(),
+            })
+            .strict(),
+        ]),
+      )
+      .min(1)
+      .max(MAX_ROLE_SYNC_CLAIM),
+  })
+  .strict();
+
+/** The body of TOURNEY_ROUTES.ackRoleSync. */
+export type RoleSyncAckBody = z.infer<typeof roleSyncAckBodySchema>;
+
+/** The body of TOURNEY_ROUTES.refreshRoleSync: work out that member's roles in that guild now. */
+export const roleSyncRefreshBodySchema = z
+  .object({ guildId: snowflakeSchema, discordId: snowflakeSchema })
+  .strict();
+
+/** The body of TOURNEY_ROUTES.refreshRoleSync. */
+export type RoleSyncRefreshBody = z.infer<typeof roleSyncRefreshBodySchema>;
+
+/**
+ * tourney's answer to TOURNEY_ROUTES.registration. `one-click`: harumin registers the user itself,
+ * POST /api/v1/editions/{lineage}/{edition}/registrations acting for them (the slugs). `form`: DM
+ * them the registration form's link. `link-account`: DM them where to link their Discord account
+ * on haruhime.moe. `refused`: tell them `message` (`code` is tourney's error code).
+ */
+export const registrationButtonSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("one-click"),
+    lineage: tourneySlugSchema,
+    edition: tourneySlugSchema,
+  }),
+  z.object({ outcome: z.literal("form"), url: httpsUrlSchema }),
+  z.object({ outcome: z.literal("link-account"), url: httpsUrlSchema }),
+  z.object({
+    outcome: z.literal("refused"),
+    code: z.string().min(1).max(64),
+    message: z.string().min(1).max(500),
+  }),
+]);
+
+/** What a Register button does for one Discord user. */
+export type RegistrationButton = z.infer<typeof registrationButtonSchema>;

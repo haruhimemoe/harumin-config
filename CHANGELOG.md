@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The tourney.haruhime.moe contract. Role rules: `ROLE_TRIGGERS`, `ROLE_REVOKES`, `MAX_ROLE_RULES` (25), `roleTriggerSchema`, `roleRuleSchema` and `roleRulesSchema` (unique ids, one guild and one revoke per role). A lineage's link to Discord: `tourneyLinkSchema`. The channel a harumin post goes to: `notificationRouteSchema`.
+- Two bot routes tourney calls: `SERVICE_ROUTES.guildRoles` answers a guild's roles and what harumin may do with them (`guildRolesSchema`); `SERVICE_ROUTES.tourneyPost` takes one embed with no mentions and an optional Register button, whose custom id starts with `REGISTER_BUTTON_PREFIX` (`tourneyPostBodySchema`, `tourneyEmbedSchema`), and answers the message's id (`tourneyPostAnswerSchema`).
+- tourney's routes for harumin, `TOURNEY_ROUTES`, and `DISCORD_USER_HEADER` for `/api/v1` calls made for a Discord user. Role sync: `roleSyncJobSchema`, `roleSyncClaimBodySchema`, `roleSyncClaimAnswerSchema`, `roleSyncAckBodySchema`, `roleSyncRefreshBodySchema`, `ROLE_SYNC_ERRORS`, `ROLE_SYNC_LEASE_SECONDS` (120) and `MAX_ROLE_SYNC_CLAIM` (50). A guild's linked lineages: `tourneyGuildSchema`. What the Register button does: `registrationButtonSchema`.
+- Each new schema exports its type under the PascalCase name (`roleRuleSchema` gives `RoleRule`), and `RoleRevoke` and `RoleSyncError` name one revoke and one error.
+
 ### Changed
 
 - CI runs CodeQL and a gitleaks scan of the full git history, and Dependabot covers dependencies and pinned actions. Dependencies are on their latest versions.

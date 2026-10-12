@@ -1,11 +1,12 @@
 /**
  * @file tests/index.test.ts
  * @desc Guild settings defaults, reading stored documents (bad ones fall back), patches (strict,
- *       partial, never mutating), track entries, the service contract, guild icon URLs and the
- *       card image contract.
+ *       partial, never mutating), track entries, the service contract, guild icon URLs, the
+ *       card image contract and the tourney contract (role rules, guild links, harumin posts,
+ *       role sync and the Register button).
  * @author David @dvhsh (https://dvh.sh)
  * @created Tue Oct 6, 2026
- * @modified Wed Oct 7, 2026
+ * @modified Mon Oct 12, 2026
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,6 +22,7 @@ import {
   DEFAULT_AUTO_EMBEDS,
   defaultGuildSettings,
   guildIconUrl,
+  guildRolesSchema,
   guildSettingsPatchSchema,
   HARUMIN_COLLECTIONS,
   infoCardSchema,
@@ -31,21 +33,37 @@ import {
   MAX_LEADERBOARD_ROWS,
   MAX_MATCH_ROWS,
   MAX_POOL_SLOTS,
+  MAX_ROLE_RULES,
+  MAX_ROLE_SYNC_CLAIM,
   manageableGuildsSchema,
   mapCardSchema,
   matchCostCardSchema,
   noticeCardSchema,
+  notificationRouteSchema,
   poolCardSchema,
   profileCardSchema,
   readGuildSettings,
   readUserSettings,
+  registrationButtonSchema,
   revalidateBodySchema,
   revalidateUserBodySchema,
+  roleRuleSchema,
+  roleRulesSchema,
+  roleSyncAckBodySchema,
+  roleSyncClaimAnswerSchema,
+  roleSyncClaimBodySchema,
+  roleSyncJobSchema,
+  roleSyncRefreshBodySchema,
   SERVICE_ROUTES,
   scoreCardSchema,
   scoreListCardSchema,
   serverCardSchema,
   simulateCardSchema,
+  TOURNEY_ROUTES,
+  tourneyGuildSchema,
+  tourneyLinkSchema,
+  tourneyPostAnswerSchema,
+  tourneyPostBodySchema,
   trackEntrySchema,
   tracksCardSchema,
 } from "../src/index.js";
@@ -161,6 +179,7 @@ describe("tracks and the service contract", () => {
         "CARD_LAYOUT",
         "CARD_ROUTES",
         "DEFAULT_AUTO_EMBEDS",
+        "DISCORD_USER_HEADER",
         "GRADES",
         "HARUMIN_COLLECTIONS",
         "MAX_CARD_ROWS",
@@ -168,12 +187,20 @@ describe("tracks and the service contract", () => {
         "MAX_MATCH_ROWS",
         "MAX_NOTICE_LENGTH",
         "MAX_POOL_SLOTS",
+        "MAX_ROLE_RULES",
+        "MAX_ROLE_SYNC_CLAIM",
         "MAX_SERVER_ROWS",
         "MAX_TRACKED_PER_GUILD",
         "NOTICE_TONES",
         "POOL_CHECKS",
+        "REGISTER_BUTTON_PREFIX",
+        "ROLE_REVOKES",
+        "ROLE_SYNC_ERRORS",
+        "ROLE_SYNC_LEASE_SECONDS",
+        "ROLE_TRIGGERS",
         "RULESETS",
         "SERVICE_ROUTES",
+        "TOURNEY_ROUTES",
         "applyGuildSettingsPatch",
         "bbCardSchema",
         "cardMapSchema",
@@ -185,6 +212,7 @@ describe("tracks and the service contract", () => {
         "defaultGuildSettings",
         "guildChannelsSchema",
         "guildIconUrl",
+        "guildRolesSchema",
         "guildSettingsPatchSchema",
         "guildSettingsSchema",
         "infoCardSchema",
@@ -197,12 +225,22 @@ describe("tracks and the service contract", () => {
         "matchCostCardSchema",
         "noticeCardSchema",
         "noticePartSchema",
+        "notificationRouteSchema",
         "poolCardSchema",
         "profileCardSchema",
         "readGuildSettings",
         "readUserSettings",
+        "registrationButtonSchema",
         "revalidateBodySchema",
         "revalidateUserBodySchema",
+        "roleRuleSchema",
+        "roleRulesSchema",
+        "roleSyncAckBodySchema",
+        "roleSyncClaimAnswerSchema",
+        "roleSyncClaimBodySchema",
+        "roleSyncJobSchema",
+        "roleSyncRefreshBodySchema",
+        "roleTriggerSchema",
         "rulesetSchema",
         "scoreCardSchema",
         "scoreListCardSchema",
@@ -210,6 +248,11 @@ describe("tracks and the service contract", () => {
         "serverCardSchema",
         "simulateCardSchema",
         "snowflakeSchema",
+        "tourneyEmbedSchema",
+        "tourneyGuildSchema",
+        "tourneyLinkSchema",
+        "tourneyPostAnswerSchema",
+        "tourneyPostBodySchema",
         "trackEntrySchema",
         "tracksCardSchema",
         "userSettingsSchema",
@@ -560,5 +603,213 @@ describe("card images", () => {
       2,
     );
     expect(inviteCardSchema.parse({ guilds: 3 })).toEqual({ guilds: 3 });
+  });
+});
+
+describe("tourney", () => {
+  const G = "123456789012345678";
+  const id = "a".repeat(24);
+  const rule = {
+    id,
+    guildId: G,
+    roleId: G,
+    trigger: "approved",
+    revoke: "onEditionDone",
+    editionId: null,
+  };
+  /** Where each of a rule list's issues points: [rule index, field]. */
+  const rulePaths = (rules: unknown) =>
+    roleRulesSchema.safeParse(rules).error?.issues.map((issue) => issue.path);
+
+  it("takes core, staff and team triggers on a role rule", () => {
+    expect(roleRuleSchema.parse(rule)).toEqual(rule);
+    for (const trigger of ["staffRole:referee", `staffRole:${id}`])
+      expect(roleRuleSchema.parse({ ...rule, trigger }).trigger).toBe(trigger);
+    expect(
+      roleRuleSchema.parse({ ...rule, trigger: `onTeam:${id}`, editionId: id }).editionId,
+    ).toBe(id);
+    expect(roleRuleSchema.parse({ ...rule, trigger: "donated", revoke: "onRefund" }).revoke).toBe(
+      "onRefund",
+    );
+  });
+
+  it("refuses bad triggers and revokes, editionless team rules and onRefund off donated", () => {
+    const refused = [
+      { trigger: "onTeam:x", editionId: id },
+      { trigger: `onTeam:${id}` },
+      { revoke: "onRefund" },
+      { trigger: "staffRole:" },
+      { trigger: "everyone" },
+      { revoke: "later" },
+    ];
+    for (const change of refused)
+      expect(roleRuleSchema.safeParse({ ...rule, ...change }).success).toBe(false);
+    expect(
+      roleRuleSchema.safeParse({ ...rule, trigger: `onTeam:${id}` }).error?.issues,
+    ).toMatchObject([{ path: ["editionId"], message: "A team rule names its edition." }]);
+    expect(roleRuleSchema.safeParse({ ...rule, revoke: "onRefund" }).error?.issues).toMatchObject([
+      { path: ["revoke"], message: "onRefund is only for donated." },
+    ]);
+    expect(roleRuleSchema.safeParse({ ...rule, trigger: "everyone" }).error?.issues).toMatchObject([
+      { path: ["trigger"], message: "Not a role trigger." },
+    ]);
+  });
+
+  it("caps a lineage at MAX_ROLE_RULES rules, one guild and one revoke per role", () => {
+    const rules = Array.from({ length: MAX_ROLE_RULES + 1 }, (_, i) => ({
+      ...rule,
+      id: i.toString(16).padStart(24, "0"),
+    }));
+    expect(roleRulesSchema.safeParse(rules.slice(0, MAX_ROLE_RULES)).success).toBe(true);
+    expect(roleRulesSchema.safeParse(rules).error?.issues).toMatchObject([
+      { path: [], message: "A lineage has at most 25 role rules." },
+    ]);
+    const other = { ...rule, id: "b".repeat(24), trigger: "registered" };
+    expect(roleRulesSchema.safeParse([rule, other]).success).toBe(true);
+    expect(rulePaths([rule, { ...other, id }])).toEqual([[1, "id"]]);
+    expect(
+      rulePaths([
+        { ...rule, revoke: "never" },
+        { ...other, revoke: "onWithdraw" },
+      ]),
+    ).toEqual([[1, "revoke"]]);
+    expect(rulePaths([rule, { ...other, guildId: "876543210987654321" }])).toEqual([
+      [1, "guildId"],
+    ]);
+  });
+
+  it("reads a stored guild link, linkedAt as a Date", () => {
+    const link = tourneyLinkSchema.parse({
+      lineageId: id,
+      guildId: G,
+      staffGuildId: null,
+      enabled: true,
+      nicknames: false,
+      rules: [rule],
+      linkedBy: G,
+      linkedAt: "2026-10-12T00:00:00.000Z",
+    });
+    expect(link.linkedAt).toEqual(new Date("2026-10-12T00:00:00.000Z"));
+    expect(link.rules).toEqual([rule]);
+  });
+
+  it("takes tourney's one-embed post, with or without a Register button", () => {
+    const embed = {
+      author: { name: "EGC 2026", url: "https://tourney.haruhime.moe/egc/egc2026" },
+      title: "GF: result",
+      url: "https://tourney.haruhime.moe/egc/egc2026/m/GF",
+      description: "peppy **7** - **5** cookiezi",
+      footer: { text: "tourney.haruhime.moe" },
+      timestamp: "2026-10-12T00:00:00.000Z",
+    };
+    const message = { embeds: [embed], allowed_mentions: { parse: [] } };
+    const body = { guildId: G, channelId: G, key: `${id}|${id}`, message, register: null };
+    expect(tourneyPostBodySchema.parse(body)).toEqual(body);
+    expect(tourneyPostBodySchema.parse({ ...body, register: { editionId: id } }).register).toEqual({
+      editionId: id,
+    });
+    const { description: _, ...generic } = embed;
+    const bare = { ...body, message: { ...message, embeds: [generic] } };
+    expect(tourneyPostBodySchema.parse(bare)).toEqual(bare);
+    const long = { description: "x".repeat(4096), footer: { text: "x".repeat(2048) } };
+    const refused = [
+      { ...body, message: { ...message, allowed_mentions: { parse: ["users"] } } },
+      { ...body, message: { ...message, embeds: [embed, embed] } },
+      { ...body, message: { ...message, embeds: [{ ...embed, title: "x".repeat(257) }] } },
+      {
+        ...body,
+        message: { ...message, embeds: [{ ...embed, url: "http://tourney.haruhime.moe" }] },
+      },
+      { ...body, extra: 1 },
+      { ...body, message: { ...message, content: "@everyone" } },
+      { ...body, message: { ...message, embeds: [{ ...embed, ...long }] } },
+    ];
+    for (const post of refused) expect(tourneyPostBodySchema.safeParse(post).success).toBe(false);
+  });
+
+  it("takes role-sync claims, jobs, acks and refreshes", () => {
+    expect(roleSyncClaimBodySchema.parse({})).toEqual({ limit: MAX_ROLE_SYNC_CLAIM });
+    expect(roleSyncClaimBodySchema.safeParse({ limit: 0 }).success).toBe(false);
+    const job = { id, version: 1, guildId: G, discordId: G, add: [G], remove: [], nick: "peppy" };
+    expect(roleSyncClaimAnswerSchema.parse({ jobs: [job] })).toEqual({ jobs: [job] });
+    expect(
+      roleSyncJobSchema.safeParse({ ...job, add: Array(MAX_ROLE_RULES + 1).fill(G) }).success,
+    ).toBe(false);
+    const applied = { id, version: 1, outcome: "applied" };
+    const failed = {
+      id,
+      version: 2,
+      outcome: "failed",
+      error: "rate-limited",
+      retryAfterSeconds: 30,
+    };
+    const results = [
+      applied,
+      { id, version: 1, outcome: "skipped", reason: "not-in-guild" },
+      failed,
+      { ...failed, error: "role-too-high", retryAfterSeconds: null },
+    ];
+    expect(roleSyncAckBodySchema.parse({ results })).toEqual({ results });
+    for (const refused of [
+      [{ ...failed, error: "nope" }],
+      Array(MAX_ROLE_SYNC_CLAIM + 1).fill(applied),
+      [{ id, version: 1, outcome: "skipped" }],
+      [],
+    ])
+      expect(roleSyncAckBodySchema.safeParse({ results: refused }).success).toBe(false);
+    const refresh = { guildId: G, discordId: G };
+    expect(roleSyncRefreshBodySchema.parse(refresh)).toEqual(refresh);
+    expect(roleSyncRefreshBodySchema.safeParse({ ...refresh, extra: 1 }).success).toBe(false);
+  });
+
+  it("parses guild roles, refusing a color past 0xffffff", () => {
+    const role = { id: G, name: "Player", color: 0xff66aa, position: 3, assignable: true };
+    const roles = { roles: [role], manageRoles: true, manageNicknames: false };
+    expect(guildRolesSchema.parse(roles)).toEqual(roles);
+    expect(
+      guildRolesSchema.safeParse({ ...roles, roles: [{ ...role, color: 0x1000000 }] }).success,
+    ).toBe(false);
+  });
+
+  it("parses linked guilds, a post's route and its answer, refusing bad ids", () => {
+    const edition = { id, slug: "egc2026", name: "Evergreen Cup 2026", phase: "registration" };
+    const link = {
+      lineage: { id, slug: "egc", name: "Evergreen Cup" },
+      slot: "main",
+      enabled: true,
+      editions: [edition],
+    };
+    expect(tourneyGuildSchema.parse({ links: [link] })).toEqual({ links: [link] });
+    expect(
+      tourneyGuildSchema.safeParse({ links: [{ ...link, editions: [{ ...edition, id: "A1" }] }] })
+        .success,
+    ).toBe(false);
+    const route = { guildId: G, channelId: G };
+    expect(notificationRouteSchema.parse(route)).toEqual(route);
+    expect(notificationRouteSchema.safeParse({ ...route, channelId: "general" }).success).toBe(
+      false,
+    );
+    expect(tourneyPostAnswerSchema.parse({ messageId: G })).toEqual({ messageId: G });
+    expect(tourneyPostAnswerSchema.safeParse({ messageId: "42" }).success).toBe(false);
+  });
+
+  it("parses each Register button outcome", () => {
+    for (const button of [
+      { outcome: "one-click", lineage: "egc", edition: "egc2026" },
+      { outcome: "form", url: "https://tourney.haruhime.moe/egc/egc2026/register" },
+      { outcome: "link-account", url: "https://www.haruhime.moe/account" },
+      {
+        outcome: "refused",
+        code: "discord-paused",
+        message: "Discord is off for this tournament.",
+      },
+    ])
+      expect(registrationButtonSchema.parse(button)).toEqual(button);
+  });
+
+  it("keeps tourney's routes under /api/harumin/ and adds the bot's roles route", () => {
+    for (const path of Object.values(TOURNEY_ROUTES))
+      expect(path.startsWith("/api/harumin/")).toBe(true);
+    expect(SERVICE_ROUTES.guildRoles).toBe("/guilds/:guildId/roles");
   });
 });
