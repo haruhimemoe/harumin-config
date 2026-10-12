@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-12
+
 ### Added
 
 - The tourney.haruhime.moe contract. Role rules: `ROLE_TRIGGERS`, `ROLE_REVOKES`, `MAX_ROLE_RULES` (25), `roleTriggerSchema`, `roleRuleSchema` and `roleRulesSchema` (unique ids, one guild and one revoke per role). A lineage's link to Discord: `tourneyLinkSchema`. The channel a harumin post goes to: `notificationRouteSchema`.
@@ -99,7 +101,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Guild settings (`guildSettingsSchema`, `defaultGuildSettings`, `readGuildSettings`, `guildSettingsPatchSchema`, `applyGuildSettingsPatch`), auto-embed keys, defaults and labels, `/track` entries, collection names, the bot's service routes and their bodies, and `guildIconUrl`.
 
-[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/haruhimemoe/harumin-config/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.11.1...v0.12.0
+[0.11.1]: https://github.com/haruhimemoe/harumin-config/compare/v0.11.0...v0.11.1
+[0.11.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/haruhimemoe/harumin-config/compare/v0.1.0...v0.2.0
