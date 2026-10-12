@@ -883,6 +883,18 @@ describe("tourney drafts", () => {
     for (const view of refused) expect(tourneyDraftSchema.safeParse(view).success).toBe(false);
   });
 
+  it("bounds lineage and edition slugs at 64 characters and names at 256", () => {
+    const longest = { slug: "s".repeat(64), name: "n".repeat(256) };
+    const atLimit = { ...draft, lineage: longest, edition: { ...draft.edition, ...longest } };
+    expect(tourneyDraftSchema.parse(atLimit)).toEqual(atLimit);
+    for (const over of [{ slug: "s".repeat(65) }, { name: "n".repeat(257) }]) {
+      const lineage = { ...draft.lineage, ...over };
+      const edition = { ...draft.edition, ...over };
+      expect(tourneyDraftSchema.safeParse({ ...draft, lineage }).success).toBe(false);
+      expect(tourneyDraftSchema.safeParse({ ...draft, edition }).success).toBe(false);
+    }
+  });
+
   it("takes a strict pick body naming its pick, and answers the draft after it", () => {
     const body = { guildId: G, team: B, player: 2004, overall: 1 };
     expect(draftPickBodySchema.parse(body)).toEqual(body);

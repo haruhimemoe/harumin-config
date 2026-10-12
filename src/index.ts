@@ -1314,8 +1314,8 @@ const instant = z.iso.datetime({ offset: true });
  * At most 1024 picks and 1024 players.
  */
 export const tourneyDraftSchema = z.object({
-  lineage: z.object({ slug: z.string().min(1), name: z.string().min(1) }),
-  edition: z.object({ id: tourneyIdSchema, slug: z.string().min(1), name: z.string().min(1) }),
+  lineage: z.object({ slug: tourneySlugSchema, name: tourneyNameSchema }),
+  edition: z.object({ id: tourneyIdSchema, slug: tourneySlugSchema, name: tourneyNameSchema }),
   url: httpsUrlSchema,
   total: z.number().int().min(1).max(1024),
   /**
